@@ -120,6 +120,13 @@ flowchart LR
     P -. "This phone only<br/>(Local Mobile App Scanning)" .-> M["CrealityScan app<br/>on the same phone"]
 ```
 
+<p align="center">
+  <img src="docs/screenshots/setup.jpg" alt="A CR-Scan Otter plugged into a USB hub on an Android phone, a power bank powering the hub, and Creality Scan running on a laptop" width="100%">
+  <br>
+  <sub>A real setup, scanning the laptop on the left: the Otter goes into a USB 3 hub on the phone, a power
+  bank powers both, and Creality Scan on the right laptop sees the bridge over the network.</sub>
+</p>
+
 1. Download `CR-BYOB-<version>-github.apk` from [Releases](https://github.com/NickLD/CR-BYOB/releases) and
    install it.
 2. Open **CR-BYOB**, allow the permissions it explains, and plug in the scanner.
