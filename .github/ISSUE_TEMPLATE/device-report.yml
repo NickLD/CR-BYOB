@@ -1,0 +1,84 @@
+name: Device report
+description: Tried CR-BYOB with a scanner or phone? Tell us whether it works, so the supported-devices list can grow.
+title: "[Device] <scanner> on <phone>"
+labels: ["device report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing! Reports for **untested** scanners and phones are the most useful, and "it doesn't work" reports count just as much as "it works".
+  - type: dropdown
+    id: scanner
+    attributes:
+      label: Scanner
+      options:
+        - CR-Scan Otter
+        - CR-Scan Otter Lite
+        - CR-Scan Otter Lite Basic
+        - CR-Scan Raptor
+        - CR-Scan Raptor X
+        - CR-Scan Raptor Pro
+        - CR-Scan Raptor Pro Max
+        - CR-Scan Ferret
+        - CR-Scan Ferret Pro
+        - Sermoon X1
+        - Sermoon S1
+        - Creality Pika
+        - M1 Ultra
+        - Other (say which below)
+    validations:
+      required: true
+  - type: input
+    id: scanner_fw
+    attributes:
+      label: Scanner firmware
+      description: Shown on the dashboard next to the scanner name, e.g. "fw 1.2.2".
+  - type: input
+    id: app_info
+    attributes:
+      label: App, phone and Android version
+      description: Long-press the version at the bottom of the CR-BYOB dashboard and paste the copied line here.
+      placeholder: "CR-BYOB 0.1.0 (10099, github, abc1234) · Google Pixel 10 Pro XL · Android 16 (API 36)"
+    validations:
+      required: true
+  - type: dropdown
+    id: network
+    attributes:
+      label: Network
+      options:
+        - Wi-Fi Direct
+        - Wi-Fi (home network)
+        - Ethernet
+        - This phone only (CrealityScan mobile app)
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: Creality Scan version
+      description: The PC or phone app you scanned with, and its version.
+      placeholder: "Creality Scan 4.x (Windows) / CrealityScan 3.1.2 (Android)"
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      options:
+        - Works (preview and a full scan)
+        - Partly works (say what doesn't)
+        - Doesn't work
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: What happened
+      description: What you did, what worked, what didn't, frame rates you saw, anything odd.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log
+      description: |
+        Optional but very helpful for scanners that don't work: open *Events → Raw log* on the dashboard and copy the lines around the problem, or `adb shell logcat -s CRBYOB`. Lines named `scanner_model`, `scanner_roles` and `usb_vs_modes` matter most. Passwords never appear in the log.
+      render: text

@@ -1,0 +1,434 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Mirror</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0E1116; color: #E6EDF3; font: 14px sans-serif; overflow: hidden;
+               -webkit-user-select: none; user-select: none; }
+  #wrap { display: flex; flex-direction: column; height: 100%; }
+  .slot { position: relative; background: #000; overflow: hidden; }
+  .slot video { width: 100%; height: 100%; object-fit: contain; display: block; transform-origin: 50% 50%; }
+  #big { width: 100%; aspect-ratio: 4 / 3; flex: none; touch-action: none; }
+  #row { display: flex; gap: 8px; padding: 8px 8px 0 8px; flex: none; }
+  #row .slot { flex: 1; aspect-ratio: 16 / 10; border: 2px solid #2A313C; border-radius: 10px; }
+  .lbl { position: absolute; left: 8px; top: 6px; padding: 2px 8px; border-radius: 8px; background: rgba(14,17,22,.7);
+         font-size: 12px; font-weight: bold; color: #8B949E; pointer-events: none; }
+  .empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #6E7681;
+           font-size: 13px; pointer-events: none; text-align: center; padding: 0 12px; }
+  #zoomlbl { position: absolute; right: 44px; top: 6px; padding: 2px 8px; border-radius: 8px; background: rgba(14,17,22,.7);
+             font-size: 12px; color: #8B949E; pointer-events: none; display: none; }
+  /* distance bar like the phone app: top = too far, bottom = too close */
+  #dist { position: absolute; right: 10px; top: 10%; bottom: 10%; width: 14px; border-radius: 7px; overflow: visible;
+          display: none; pointer-events: none;
+          background: linear-gradient(to bottom, #178BF6 0 20%, #19E7FF 20% 40%, #1BF617 40% 60%, #F6AA17 60% 80%, #F64917 80% 100%); }
+  #handle { position: absolute; left: -6px; width: 26px; height: 6px; border-radius: 3px; background: #fff;
+            box-shadow: 0 0 4px #000; transition: bottom .25s ease-out; }
+  #distlbl { position: absolute; right: 30px; padding: 2px 8px; border-radius: 8px; background: rgba(14,17,22,.8);
+             font-size: 13px; font-weight: bold; white-space: nowrap; transition: bottom .25s ease-out; }
+  #side { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+  #info { padding: 10px 12px 4px 12px; flex: 1; overflow: hidden; }
+  /* Landscape (the WebView is wider than tall): the model fills the height on the left; RGB / IR are stacked
+     in a side column with the scan state under them. Native bridge panel + buttons sit right of the WebView. */
+  body.compact #side { position: absolute; left: 8px; bottom: 8px; width: 22vw; max-width: 200px; flex: none; z-index: 5; }
+  body.compact #row { flex-direction: column; gap: 6px; padding: 0; }
+  body.compact #row .slot { flex: none; width: 100%; aspect-ratio: 16 / 10; box-shadow: 0 0 6px #000; }
+  body.compact #side #row { flex: none; }
+  body.compact #info { display: none; }
+  body.compact #big { width: 100%; height: 100%; aspect-ratio: auto; }
+  @media (orientation: landscape) {
+    #wrap { flex-direction: row; }
+    #big { aspect-ratio: auto; width: auto; height: 100%; flex: 1; min-width: 0; }
+    #side { flex: none; width: 30vw; max-width: 230px; }
+    /* RGB / IR fill the middle column's height; scan state + stats live in the native right column */
+    #row { flex: 1; min-height: 0; flex-direction: column; gap: 6px; padding: 6px 24px 6px 6px; }   /* right: clear of the tab */
+    #row .slot { flex: 1; min-height: 0; width: 100%; aspect-ratio: auto; }
+    body #info { display: none; }
+    #dist { right: 30px; }                        /* clear of the drawer tab that overlaps the model's edge */
+  }
+  #scanstate { font-size: 20px; font-weight: bold; }
+  #nums { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 15px; }
+  #nums span b { color: #E6EDF3; } #nums span { color: #8B949E; }
+  #nums i { font-style: normal; } #nums .ls { display: none; }
+  #dev { margin-top: 8px; font-size: 13px; color: #8B949E; }
+  #hint { margin-top: 8px; font-size: 13px; color: #D29922; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="big" class="slot"><video autoplay playsinline muted></video><div class="lbl"></div>
+    <div class="empty">waiting for video</div><div id="zoomlbl"></div>
+    <div id="dist"><div id="handle"></div><div id="distlbl"></div></div></div>
+  <div id="side">
+  <div id="row">
+    <div id="insetA" class="slot"><video autoplay playsinline muted></video><div class="lbl"></div><div class="empty">…</div></div>
+    <div id="insetB" class="slot"><video autoplay playsinline muted></video><div class="lbl"></div><div class="empty">…</div></div>
+  </div>
+  <div id="info"><div id="scanstate"></div><div id="nums"></div><div id="dev"></div><div id="hint"></div></div>
+  </div>
+</div>
+<script>
+'use strict';
+// WebRTC half of the Creality Scan mirror.
+// Java (MirrorActivity) does the TCP 57308 signaling and calls onOffer/onCandidate; we answer, receive up to three
+// video tracks and run JSON-RPC 2.0 over the PC-created DataChannel "BytesMsg".
+const A = window.Android;
+const NAMES = {1: 'RGB', 2: 'IR', 4: '3D model'};
+let pc = null, dc = null, uid = 'diy-bridge', rpcId = 1, hb = null, statsTimer = null;
+let lastOffer = null;
+const streams = {};                 // track id -> MediaStream
+const types = {};                   // track id -> TextureType (from trackInfo)
+const order = [];                   // track ids in arrival order (until trackInfo maps them)
+const layout = {big: 4, insetA: 1, insetB: 2};   // slot -> texture type
+
+function log(s) { try { A.log(String(s)); } catch (e) {} }
+function status(state, text) { try { A.status(state, text); } catch (e) {} }
+const $ = id => document.getElementById(id);
+
+// ------------------------------------------------------------------ video slots
+function trackFor(type) {
+  for (const id in types) if (types[id] === type && streams[id]) return id;
+  const unmapped = order.filter(id => types[id] === undefined);   // before trackInfo: prefab order RGB, Model, IR
+  const guess = {1: 0, 4: 1, 2: 2}[type];
+  return unmapped[guess] || null;
+}
+
+// Creality Scan sends the RGB and IR camera images bottom-up (Unity texture origin); the rendered
+// Model view is the right way up. Flip RGB/IR vertically wherever they are shown.
+const FLIP_Y = {1: true, 2: true, 4: false};
+function flipOf(type) { return FLIP_Y[type] ? ' scaleY(-1)' : ''; }
+
+function render() {
+  for (const slot in layout) {
+    const el = $(slot), v = el.querySelector('video');
+    const id = trackFor(layout[slot]);
+    const s = id ? streams[id] : null;
+    if (v.srcObject !== s) { v.srcObject = s; if (s) v.play().catch(e => log('play: ' + e)); }
+    el.querySelector('.lbl').textContent = NAMES[layout[slot]] + (id && types[id] === undefined ? ' ?' : '');
+    el.querySelector('.empty').textContent = slot === 'big' && layout.big === 4
+        ? 'waiting for the 3D view (it appears when Creality Scan shows the scan view)' : (slot === 'big' ? 'waiting for video' : '…');
+    el.querySelector('.empty').style.display = s ? 'none' : 'flex';
+    if (slot !== 'big') v.style.transform = flipOf(layout[slot]).trim();
+  }
+  try { applyView(); } catch (e) { /* render() can run before the touch code below is initialized */ }
+}
+
+['insetA', 'insetB'].forEach(slot => $(slot).addEventListener('click', () => {
+  const t = layout[slot]; layout[slot] = layout.big; layout.big = t; resetView(); render();
+}));
+
+// ------------------------------------------------------------------ JSON-RPC
+function rpcSend(obj) {
+  const text = JSON.stringify(obj);
+  if (!dc || dc.readyState !== 'open') { log('rpc dropped (channel not open): ' + text); return false; }
+  dc.send(new TextEncoder().encode(text));        // the PC sends/expects binary UTF-8 JSON
+  try { A.rpcOut(text); } catch (e) {}
+  return true;
+}
+window.rpcNotify = function (method, params) {
+  const m = {jsonrpc: '2.0', method: method};
+  if (params !== undefined && params !== null) m.params = params;
+  return rpcSend(m);
+};
+
+function onRpc(text) {
+  let m; try { m = JSON.parse(text); } catch (e) { log('bad rpc ' + text); return; }
+  if (m.method !== 'stateSync') { try { A.rpcIn(text); } catch (e) {} }
+  if (m.id !== undefined && (m.result !== undefined || m.error !== undefined) && !m.method) {
+    if (m.error) { status('error', 'init rejected: ' + JSON.stringify(m.error)); return; }
+    const r = m.result || {};
+    if (r.Success === false) { status('error', 'init failed, ErrorCode ' + r.ErrorCode + (r.ErrorCode === 1 ? ' (another phone is already connected)' : '')); return; }
+    status('init', 'Connected to Creality Scan ' + (r.Version || '') + (r.ScannerPid ? ', scanner PID ' + r.ScannerPid : ''));
+    return;
+  }
+  const p = Array.isArray(m.params) && m.params.length === 1 ? m.params[0] : m.params;
+  if (m.method === 'trackInfo' && p) { types[p.TrackID] = p.TextureType; log('trackInfo ' + p.TrackID + ' = ' + p.TextureType); render(); }
+  if (m.method === 'stateSync' && p && p.DicDatas) onStateSync(p.DicDatas);
+  if (m.id !== undefined && m.method) rpcSend({jsonrpc: '2.0', id: m.id, error: {code: -32601, message: 'Method not found'}});
+}
+
+// ------------------------------------------------------------------ stateSync decoding (phone doc §8.3)
+const KEYS = {1: 'DeviceStatus', 2: 'DeviceName', 3: 'ScannerFirmwareVersion', 4: 'IsWifiConnection', 5: 'BatteryValue',
+  101: 'ScanStatus', 102: 'ScanStatusResult', 103: 'ScanParams', 120: 'FrameId', 121: 'PointCount', 122: 'MarkerCount',
+  123: 'FrameRate', 124: 'Temperature', 125: 'FreeMemory', 126: 'StreamBitRate', 127: 'DistanceAdvice',
+  128: 'AppliedScanParams', 129: 'SupportedScanConfig', 136: 'CameraZoomMin', 137: 'CameraZoomMax',
+  138: 'CameraZoomValue', 139: 'CameraZoomSupport', 140: 'ScanButtonStatus', 201: 'StateMachineState'};
+const SCAN = ['Not created', 'Created', 'Previewing', 'Scanning', 'Paused', 'Stopped'];
+const MAIN = {0: '', 1: 'Home screen', 2: 'Scan', 3: 'Calibration'};
+const ADVICE = [['Too Close', '#F64917'], ['Suitable', '#F6AA17'], ['Optimal', '#1BF617'], ['Suitable', '#19E7FF'], ['Too Far', '#178BF6']];
+const BTN = {None: 0, Start: 1, Pause: 2, Stop: 3, Clear: 4, Create: 5};
+const st = {};
+let haveBtn = false, distAt = 0, lastPcState = '';
+const btnState = {1: 2, 2: 2, 3: 2, 4: 2, 5: 2};    // 1 show, 2 hide, 3 disabled
+
+function bytes(v) {
+  if (Array.isArray(v)) return v.map(Number);
+  if (typeof v === 'string') { try { return Array.from(atob(v), c => c.charCodeAt(0)); } catch (e) { return []; } }
+  if (typeof v === 'number') return [v];
+  return [];
+}
+function num(v) { const n = Number(v); return isFinite(n) ? n : 0; }
+
+function onStateSync(dd) {
+  for (const k in dd) {
+    const name = /^\d+$/.test(k) ? (KEYS[+k] || k) : k;
+    if (name === 'ScanButtonStatus') {
+      const b = typeof dd[k] === 'string' ? JSON.parse(dd[k]) : dd[k];
+      for (const t in (b || {})) {
+        const type = /^\d+$/.test(t) ? +t : BTN[t];
+        const v = num(b[t]);
+        if (type >= 1 && type <= 5 && v !== 0) btnState[type] = v;    // 0 = leave unchanged
+      }
+      haveBtn = true;
+    } else st[name] = dd[k];
+  }
+  if (st.CameraZoomValue !== undefined && !pinch) zoomValue = num(st.CameraZoomValue);
+  if ('DistanceAdvice' in dd || '127' in dd) distAt = Date.now();
+  renderState();
+}
+
+function renderState() {
+  const ss = st.ScanStatus === undefined ? -1 : num(st.ScanStatus);
+  const sm = bytes(st.StateMachineState);
+  const main = sm.length ? sm[0] : -1, sub = sm.length > 1 ? sm[1] : 0;
+  let title = ss >= 0 && ss < SCAN.length ? SCAN[ss] : '';
+  if (main === 1) title = 'Creality Scan is on its home screen';
+  else if (main === 2 && sub === 1) title = 'Post-processing';
+  else if (main === 3) title = 'Calibration';
+  $('scanstate').textContent = title || 'Waiting for Creality Scan state…';
+  const parts = [];
+  // long label for portrait, short (or none) for the narrow landscape column
+  const add = (label, short, v, fmt) => parts.push('<span><i class="ll">' + label + ' </i><i class="ls">' + (short ? short + ' ' : '')
+      + '</i><b>' + fmt(v) + '</b></span>');
+  if (num(st.PointCount) >= 1) add('Points', 'Points', st.PointCount, v => num(v).toLocaleString('en-US'));
+  if (num(st.MarkerCount) >= 1) add('Markers', 'Markers', st.MarkerCount, v => num(v));
+  if (num(st.FrameId) >= 1) add('Frames', 'Frames', st.FrameId, v => num(v));
+  if (num(st.FrameRate) > 0) add('Frame Rate', '', st.FrameRate, v => Math.round(num(v)) + ' fps');
+  if (num(st.Temperature) > 0) add('Temperature', '', st.Temperature, v => num(v).toFixed(0) + '℃');
+  $('nums').innerHTML = parts.join('');
+  $('dev').textContent = st.DeviceName && st.ScannerFirmwareVersion ? st.DeviceName + '_' + st.ScannerFirmwareVersion : (st.DeviceName || '');
+  $('hint').textContent = main === 1 ? 'Open a scan in Creality Scan on the PC to see the live views here.' : '';
+
+  // distance indicator; advice 5 = invalid (ignored), hide when stale
+  const da = bytes(st.DistanceAdvice);
+  const fresh = Date.now() - distAt < 3000;
+  if (da.length >= 2 && da[0] <= 4 && fresh) {
+    const y = Math.max(0, Math.min(100, da[1]));
+    $('dist').style.display = 'block';
+    $('handle').style.bottom = 'calc(' + y + '% - 3px)';
+    const l = $('distlbl');
+    l.textContent = ADVICE[da[0]][0];
+    l.style.color = ADVICE[da[0]][1];
+    l.style.bottom = 'calc(' + y + '% - 11px)';
+  } else if (!fresh) $('dist').style.display = 'none';
+
+  // scan buttons: PC-driven (key 140), else the ScanStatus fallback table
+  const b = Object.assign({}, btnState);
+  if (!haveBtn) {
+    for (const t in b) b[t] = 2;
+    if (ss === 0 || ss === 1) b[5] = 1;
+    else if (ss === 2) b[1] = 3;
+    else if (ss === 3) { b[2] = 1; b[3] = 1; b[4] = 1; }
+    else if (ss === 4) { b[1] = 1; b[3] = 1; }
+  }
+  const zoomOk = st.CameraZoomSupport === true || st.CameraZoomSupport === 'true' || st.CameraZoomSupport === 1;
+  const stats = [];
+  if (num(st.PointCount) >= 1) stats.push(['Points', num(st.PointCount).toLocaleString('en-US')]);
+  if (num(st.MarkerCount) >= 1) stats.push(['Markers', String(num(st.MarkerCount))]);
+  if (num(st.FrameId) >= 1) stats.push(['Frames', String(num(st.FrameId))]);
+  if (num(st.FrameRate) > 0) stats.push(['Frame rate', Math.round(num(st.FrameRate)) + ' fps']);
+  if (num(st.Temperature) > 0) stats.push(['Temperature', num(st.Temperature).toFixed(0) + '℃']);
+  const out = JSON.stringify({status: ss, buttons: b, resume: ss === 4, pcDriven: haveBtn, known: ss >= 0 || haveBtn, zoom: zoomOk,
+                              label: title || '', stats: stats, dev: $('dev').textContent, hint: $('hint').textContent});
+  if (out !== lastPcState) { lastPcState = out; try { A.pcState(out); } catch (e) {} }
+}
+setInterval(renderState, 1000);    // ages out the distance indicator
+
+// ------------------------------------------------------------------ touch on the model view (phone doc §8.2)
+const big = $('big');
+let localScale = 1, panX = 0, panY = 0, pinch = null, drag = null, lastTap = 0;
+let zoomValue = 1.0, zoomPending = null, zoomSentAt = 0, zoomTimer = null;
+function zoomRange() {
+  let lo = num(st.CameraZoomMin), hi = num(st.CameraZoomMax);
+  if (!(hi > lo)) { lo = 0.5; hi = 2.5; }
+  return [lo, hi];
+}
+function zoomSupported() { return st.CameraZoomSupport === true || st.CameraZoomSupport === 'true' || st.CameraZoomSupport === 1; }
+// Keep the scaled picture covering the frame: pan only as far as the zoomed image extends past the
+// edges, so dragging never reveals blank space. At 1x (remote zoom only) the picture can't move.
+function clampPan() {
+  const v = big.querySelector('video'), cw = big.clientWidth, ch = big.clientHeight;
+  let dw = cw, dh = ch;                                   // object-fit: contain -> displayed image size
+  if (v.videoWidth && v.videoHeight) {
+    const r = Math.min(cw / v.videoWidth, ch / v.videoHeight);
+    dw = v.videoWidth * r; dh = v.videoHeight * r;
+  }
+  const mx = Math.max(0, (dw * localScale - cw) / 2), my = Math.max(0, (dh * localScale - ch) / 2);
+  panX = Math.max(-mx, Math.min(mx, panX));
+  panY = Math.max(-my, Math.min(my, panY));
+}
+function applyView() {
+  clampPan();
+  big.querySelector('video').style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + localScale + ')'
+      + flipOf(layout.big);
+  const zl = $('zoomlbl');
+  if (pinch && zoomSupported()) { zl.style.display = 'block'; zl.textContent = 'zoom ' + (zoomPending || zoomValue).toFixed(2); }
+  else if (localScale !== 1) { zl.style.display = 'block'; zl.textContent = 'local ' + localScale.toFixed(1) + '×'; }
+  else zl.style.display = 'none';
+}
+function resetView() { localScale = 1; panX = 0; panY = 0; applyView(); }
+window.addEventListener('resize', () => applyView());    // rotation: keep the pan inside the new box
+function sendZoom(final) {
+  if (zoomPending === null) return;
+  const now = Date.now();
+  if (!final && now - zoomSentAt < 75) {                 // ~13 Hz
+    clearTimeout(zoomTimer); zoomTimer = setTimeout(() => sendZoom(false), 80); return;
+  }
+  zoomSentAt = now;
+  rpcNotify('camera.zoom', [Math.round(zoomPending * 1000) / 1000]);
+  if (final) { zoomValue = zoomPending; zoomPending = null; }
+}
+const dist2 = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+big.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (e.touches.length === 2) {
+    drag = null;
+    pinch = {d0: dist2(e.touches[0], e.touches[1]) || 1, zoom: zoomValue, scale: localScale, remote: zoomSupported() && layout.big === 4};
+  } else if (e.touches.length === 1) {
+    const t = e.touches[0], now = Date.now();
+    if (now - lastTap < 300) { resetView(); lastTap = 0; return; }       // double tap: reset
+    lastTap = now;
+    drag = {x: t.clientX, y: t.clientY, px: panX, py: panY};
+  }
+}, {passive: false});
+big.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (pinch && e.touches.length >= 2) {
+    const s = dist2(e.touches[0], e.touches[1]) / pinch.d0;
+    if (pinch.remote) {
+      const [lo, hi] = zoomRange();
+      zoomPending = Math.max(lo, Math.min(hi, pinch.zoom * s));
+      sendZoom(false);
+    } else localScale = Math.max(1, Math.min(6, pinch.scale * s));
+    applyView();
+  } else if (drag && e.touches.length === 1) {
+    const t = e.touches[0];
+    panX = drag.px + t.clientX - drag.x; panY = drag.py + t.clientY - drag.y;
+    applyView();
+  }
+}, {passive: false});
+big.addEventListener('touchend', e => {
+  if (pinch && e.touches.length < 2) {
+    if (pinch.remote) { clearTimeout(zoomTimer); sendZoom(true); }
+    pinch = null; applyView();
+  }
+  if (e.touches.length === 0) drag = null;
+}, {passive: false});
+
+// ------------------------------------------------------------------ WebRTC
+function setupChannel(ch) {
+  dc = ch;
+  dc.binaryType = 'arraybuffer';
+  log('datachannel ' + ch.label + ' ordered=' + ch.ordered);
+  dc.onopen = () => {
+    status('rpc', 'Data channel open, sending init');
+    // The PC renders the 3D model at the size the phone asks for; without CustomModelTextureSize it uses 4x4 and
+    // Creality Scan fails to create the Model track ("Texture size is invalid", min 145x49).
+    var mw = Math.round(Math.min(1280, Math.max(screen.width, screen.height) * (window.devicePixelRatio || 1)));
+    // 4:3 rather than 16:9: the landscape model pane is nearly square, the portrait one is full-width (less letterboxing
+    // in both). The size is fixed for the session (init is sent once), so it is a compromise for both orientations.
+    var mh = Math.round(mw * 3 / 4);
+    rpcSend({jsonrpc: '2.0', method: 'init', id: rpcId++, params: {DicDatas: {CustomModelTextureSize: [mw, mh]},
+        Version: '1.4.3', Platform: 2, ScannerPid: 0, Uid: uid}});
+    clearInterval(hb);
+    hb = setInterval(() => rpcNotify('heartbeat'), 2000);
+  };
+  dc.onmessage = ev => onRpc(typeof ev.data === 'string' ? ev.data : new TextDecoder().decode(ev.data));
+  dc.onclose = () => { clearInterval(hb); status('closed', 'Data channel closed'); };
+}
+
+async function pollStats() {
+  if (!pc) return;
+  try {
+    const rep = await pc.getStats();
+    const codecs = {}, out = [];
+    rep.forEach(r => { if (r.type === 'codec') codecs[r.id] = r.mimeType; });
+    rep.forEach(r => {
+      if (r.type === 'inbound-rtp' && r.kind === 'video') {
+        out.push({track: r.trackIdentifier || '', codec: (codecs[r.codecId] || '').replace('video/', ''),
+                  fps: r.framesPerSecond || 0, decoded: r.framesDecoded || 0, w: r.frameWidth || 0, h: r.frameHeight || 0,
+                  type: types[r.trackIdentifier] || 0, bytes: r.bytesReceived || 0});
+      }
+    });
+    A.stats(JSON.stringify(out));
+  } catch (e) { log('stats: ' + e); }
+}
+
+function newPc() {
+  if (pc) try { pc.close(); } catch (e) {}
+  pc = new RTCPeerConnection({iceServers: []});      // LAN only: host candidates
+  pc.ontrack = ev => {
+    const t = ev.track;
+    streams[t.id] = new MediaStream([t]);
+    if (order.indexOf(t.id) < 0) order.push(t.id);
+    log('track ' + t.kind + ' id=' + t.id);
+    render();
+  };
+  pc.ondatachannel = ev => setupChannel(ev.channel);
+  pc.onicecandidate = ev => {
+    if (ev.candidate && ev.candidate.candidate)
+      A.sendCandidate(ev.candidate.candidate, ev.candidate.sdpMid || '0', ev.candidate.sdpMLineIndex || 0);
+  };
+  pc.oniceconnectionstatechange = () => {
+    log('ice ' + pc.iceConnectionState);
+    if (pc.iceConnectionState === 'failed') status('error', 'WebRTC connection failed (ICE). Is the PC reachable on UDP?');
+  };
+  pc.onconnectionstatechange = () => {
+    log('pc ' + pc.connectionState);
+    if (pc.connectionState === 'connected') status('media', 'WebRTC connected');
+    if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') status('error', 'WebRTC ' + pc.connectionState);
+  };
+  clearInterval(statsTimer);
+  statsTimer = setInterval(pollStats, 1000);
+}
+
+// ------------------------------------------------------------------ called from Java
+window.setCompact = function (on) { document.body.classList.toggle('compact', !!on); applyView(); };
+window.mirrorStart = function (u) { uid = u || uid; render(); renderState(); log('mirror page ready, WebRTC=' + (typeof RTCPeerConnection)); };
+
+window.onOffer = async function (sdp) {
+  try {
+    if (sdp === lastOffer && pc && pc.signalingState === 'stable') return;    // PC re-sends the offer until answered
+    const renegotiate = pc && pc.signalingState === 'stable' && lastOffer !== null;
+    if (!pc) newPc();
+    lastOffer = sdp;
+    status('offer', renegotiate ? 'Renegotiating' : 'Offer received, answering');
+    await pc.setRemoteDescription({type: 'offer', sdp: sdp});
+    const ans = await pc.createAnswer();
+    await pc.setLocalDescription(ans);
+    A.sendAnswer(pc.localDescription.sdp);
+  } catch (e) {
+    status('error', 'Could not answer the offer: ' + e);
+  }
+};
+
+window.onCandidate = async function (cand, mid, idx) {
+  if (!pc || !cand) return;
+  try { await pc.addIceCandidate({candidate: cand, sdpMid: mid, sdpMLineIndex: idx}); }
+  catch (e) { log('addIceCandidate: ' + e); }
+};
+
+window.mirrorClose = function () {
+  clearInterval(hb); clearInterval(statsTimer);
+  try { if (dc) dc.close(); } catch (e) {}
+  try { if (pc) pc.close(); } catch (e) {}
+  pc = null; dc = null; lastOffer = null;
+  for (const k in streams) delete streams[k];
+  for (const k in types) delete types[k];
+  order.length = 0;
+  render();
+};
+</script>
+</body>
+</html>

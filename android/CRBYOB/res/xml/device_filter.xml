@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Any Orbbec device (VID 0x2BC5): CR-Scan Otter 0x06DA and the other Creality scanners.
+         Per-model settings come from scanners.json (models/scanners.json in the repo). -->
+    <usb-device vendor-id="11205" />
+</resources>

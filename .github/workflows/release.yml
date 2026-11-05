@@ -1,0 +1,177 @@
+name: Release
+
+# Push a tag vX.Y.Z (or vX.Y.Z-beta.N etc.) on a commit whose CHANGELOG.md has a dated
+# "## [X.Y.Z] - YYYY-MM-DD" section.
+#
+# Secrets:   CRBYOB_KEYSTORE_BASE64, CRBYOB_KEYSTORE_PASSWORD     (required: release signing key)
+#            PLAY_SERVICE_ACCOUNT_JSON                            (optional: upload to Google Play)
+# Variables: CRBYOB_CERT_SHA256   (optional: expected signing-cert SHA-256; the build fails on any other key)
+#            PLAY_TRACK           (optional, default "internal")
+#            PLAY_RELEASE_STATUS  (optional, default "draft"; must stay "draft" until the app is published once)
+#
+# Two jobs: "build" has read-only repo access and the signing key; "publish" has write access and the Play
+# key, and runs only for a pushed tag. Third-party actions are pinned to commit SHAs.
+
+on:
+  push:
+    tags: ["v*"]
+  # Dry run from the Actions tab (any branch or tag): builds and signs both artifacts and shows the signing
+  # certificate, but publishes nothing.
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+
+defaults:
+  run:
+    shell: bash          # = bash -eo pipefail: a failing command in a pipe fails the step
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      name: ${{ steps.version.outputs.name }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      dry: ${{ steps.version.outputs.dry }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c   # v5.0.2
+
+      - name: Check tag, version and changelog agree
+        id: version
+        working-directory: android
+        env:
+          DRY: ${{ github.event_name != 'push' }}
+        run: |
+          ./gradlew -q :CRBYOB:printVersion | tee version.txt
+          name=$(sed -n 's/^versionName=//p' version.txt)
+          code=$(sed -n 's/^versionCode=//p' version.txt)
+          mkdir -p ../dist/play-whatsnew
+          if [ "$DRY" = "true" ]; then
+            echo "Dry run of $name (versionCode $code) from $GITHUB_REF_NAME: nothing is published." | tee -a "$GITHUB_STEP_SUMMARY"
+            { echo "name=$name"; echo "prerelease=true"; echo "dry=true"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$name" != "$tag" ]; then
+            echo "::error::Gradle builds this commit as '$name' but the tag is '$GITHUB_REF_NAME' (uncommitted changes, or the tag is not on this commit?)"
+            exit 1
+          fi
+          python3 ../.github/scripts/changelog.py "$name" > ../dist/release-notes.md
+          python3 ../.github/scripts/changelog.py "$name" --play > ../dist/play-whatsnew/whatsnew-en-US
+          case "$name" in *-*) pre=true ;; *) pre=false ;; esac
+          { echo "name=$name"; echo "prerelease=$pre"; echo "dry=false"; } >> "$GITHUB_OUTPUT"
+
+      - name: Release signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.CRBYOB_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.CRBYOB_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::Secrets CRBYOB_KEYSTORE_BASE64 and CRBYOB_KEYSTORE_PASSWORD are required"
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+
+      # The password goes to this step only (not $GITHUB_ENV); --no-daemon so no Gradle process outlives it.
+      - name: Build signed APK (GitHub) and AAB (Play), run unit tests
+        working-directory: android
+        env:
+          CRBYOB_KEYSTORE: ${{ runner.temp }}/release.jks
+          CRBYOB_KEYSTORE_PASSWORD: ${{ secrets.CRBYOB_KEYSTORE_PASSWORD }}
+          CRBYOB_KEY_ALIAS: crbyob
+          CRBYOB_KEY_PASSWORD: ${{ secrets.CRBYOB_KEYSTORE_PASSWORD }}   # PKCS12: key password = store password
+        # AGP 9 makes unit-test tasks for the debug build type only
+        run: ./gradlew --no-daemon :CRBYOB:testGithubDebugUnitTest :CRBYOB:assembleGithubRelease :CRBYOB:bundlePlayRelease
+
+      - name: Remove the keystore from the runner
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks"
+
+      - name: Verify signatures and collect files
+        env:
+          EXPECTED_CERT: ${{ vars.CRBYOB_CERT_SHA256 }}
+          NAME: ${{ steps.version.outputs.name }}
+        run: |
+          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          apk=android/CRBYOB/build/outputs/apk/github/release/CRBYOB-github-release.apk
+          aab=android/CRBYOB/build/outputs/bundle/playRelease/CRBYOB-play-release.aab
+          # APK: "Signer #1 certificate SHA-256 digest: …" (older apksigner) or "V2 Signer: certificate SHA-256 digest: …"
+          "$apksigner" verify --print-certs "$apk" | tee apk-certs.txt
+          apk_cert=$(grep -m1 -oE 'certificate SHA-256 digest: [0-9a-f]{64}' apk-certs.txt | awk '{print $NF}')
+          # AAB (jar-signed): keytool prints "SHA256: AA:BB:…"
+          keytool -printcert -jarfile "$aab" | tee aab-certs.txt
+          aab_cert=$(grep -m1 -oE 'SHA256: [0-9A-F:]{95}' aab-certs.txt | awk '{print $2}' | tr 'A-F' 'a-f' | tr -d ':')
+          if [ -z "$apk_cert" ] || [ -z "$aab_cert" ]; then echo "::error::Could not read the APK or AAB signing certificate"; exit 1; fi
+          if [ "$apk_cert" != "$aab_cert" ]; then echo "::error::APK ($apk_cert) and AAB ($aab_cert) are signed with different keys"; exit 1; fi
+          echo "Signing certificate SHA-256: \`$apk_cert\` (APK and AAB)" >> "$GITHUB_STEP_SUMMARY"
+          expected=$(echo "$EXPECTED_CERT" | tr 'A-F' 'a-f' | tr -d ': ')   # accepts keytool's AA:BB:… form too
+          if [ -n "$expected" ] && [ "$apk_cert" != "$expected" ]; then
+            echo "::error::Signed with $apk_cert, expected $EXPECTED_CERT"
+            exit 1
+          fi
+          mkdir -p dist
+          cp "$apk" "dist/CR-BYOB-$NAME-github.apk"
+          cp "$aab" "dist/CR-BYOB-$NAME-play.aab"
+          (cd dist && sha256sum "CR-BYOB-$NAME-github.apk" > "CR-BYOB-$NAME-github.apk.sha256")
+
+      - name: Keep the files with the run
+        uses: actions/upload-artifact@v7
+        with:
+          name: CR-BYOB-${{ steps.version.outputs.name }}
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: needs.build.outputs.dry == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write          # create the GitHub release
+    env:
+      HAS_PLAY: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}   # a flag only; the key itself goes to one step
+      NAME: ${{ needs.build.outputs.name }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: CR-BYOB-${{ needs.build.outputs.name }}
+          path: dist
+
+      - name: GitHub release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64   # v3.0.3
+        with:
+          name: CR-BYOB ${{ needs.build.outputs.name }}
+          body_path: dist/release-notes.md
+          prerelease: ${{ needs.build.outputs.prerelease }}
+          files: |
+            dist/CR-BYOB-${{ needs.build.outputs.name }}-github.apk
+            dist/CR-BYOB-${{ needs.build.outputs.name }}-github.apk.sha256
+
+      - name: Upload to Google Play
+        if: env.HAS_PLAY == 'true'
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5   # v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.crbyob.bridge
+          releaseFiles: dist/CR-BYOB-${{ needs.build.outputs.name }}-play.aab
+          track: ${{ vars.PLAY_TRACK || 'internal' }}
+          status: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
+          releaseName: ${{ needs.build.outputs.name }}
+          whatsNewDirectory: dist/play-whatsnew
+
+      - name: Play upload skipped
+        if: env.HAS_PLAY != 'true'
+        run: echo "PLAY_SERVICE_ACCOUNT_JSON is not set; the AAB is attached to the run as an artifact only." >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="18 18 72 72">
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#16314F"/><stop offset="1" stop-color="#0E1116"/></linearGradient><clipPath id="m"><circle cx="54" cy="54" r="36"/></clipPath></defs>
+  <g clip-path="url(#m)"><rect width="108" height="108" fill="url(#bg)"/>
+  <g transform="translate(54 54) scale(0.8) translate(-54 -49.5)">
+  <path d="M28.32,66.04 V72 M32.16,57.95 V72 M38.13,51.54 V72 M45.66,47.42 V72 M62.34,47.42 V72 M69.87,51.54 V72 M75.84,57.95 V72 M79.68,66.04 V72 M54,46.9 V72" fill="none" stroke="#58A6FF" stroke-width="2.6" stroke-linecap="round" opacity="0.5"/>
+  <path d="M26,72 H82" fill="none" stroke="#E6EDF3" stroke-width="5.0" stroke-linecap="round"/>
+  <path d="M25.02,63.04 a3.3,3.3 0 1,0 6.6,0 a3.3,3.3 0 1,0 -6.6,0 Z M28.86,54.95 a3.3,3.3 0 1,0 6.6,0 a3.3,3.3 0 1,0 -6.6,0 Z M34.83,48.54 a3.3,3.3 0 1,0 6.6,0 a3.3,3.3 0 1,0 -6.6,0 Z M42.36,44.42 a3.3,3.3 0 1,0 6.6,0 a3.3,3.3 0 1,0 -6.6,0 Z M59.04,44.42 a3.3,3.3 0 1,0 6.6,0 a3.3,3.3 0 1,0 -6.6,0 Z M66.57,48.54 a3.3,3.3 0 1,0 6.6,0 a3.3,3.3 0 1,0 -6.6,0 Z M72.54,54.95 a3.3,3.3 0 1,0 6.6,0 a3.3,3.3 0 1,0 -6.6,0 Z M76.38,63.04 a3.3,3.3 0 1,0 6.6,0 a3.3,3.3 0 1,0 -6.6,0 Z" fill="#58A6FF"/>
+  <path d="M50.1,43 a3.9,3.9 0 1,0 7.8,0 a3.9,3.9 0 1,0 -7.8,0 Z" fill="#3FB950"/>
+  <path d="M47.99,36.99 A8.5,8.5 0 0,1 60.01,36.99" fill="none" stroke="#3FB950" stroke-width="4.4" stroke-linecap="round"/>
+  <path d="M43.04,32.04 A15.5,15.5 0 0,1 64.96,32.04" fill="none" stroke="#3FB950" stroke-width="4.4" stroke-linecap="round"/>
+  </g></g>
+</svg>

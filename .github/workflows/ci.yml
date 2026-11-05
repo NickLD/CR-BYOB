@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash          # = bash -eo pipefail
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Android build, unit tests, lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0          # version comes from `git describe` on v* tags
+          persist-credentials: false
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c   # v5.0.2 (MIT; v6 adds proprietary caching terms). Validates the wrapper jar
+
+      - name: Version
+        run: ./gradlew -q :CRBYOB:printVersion
+
+      - name: Build both flavors, unit tests, lint
+        run: >
+          ./gradlew
+          :CRBYOB:assembleGithubDebug :CRBYOB:assemblePlayDebug
+          :CRBYOB:testGithubDebugUnitTest :CRBYOB:testPlayDebugUnitTest
+          :CRBYOB:lintGithubDebug :CRBYOB:lintPlayDebug
+
+      - name: Lint report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lint-report
+          path: android/CRBYOB/build/reports/lint-results-*.html
+          if-no-files-found: ignore
+
+  repo:
+    name: Changelog and model table
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Scanner model table is valid JSON
+        run: python -c "import json; json.load(open('models/scanners.json', encoding='utf-8'))"
+      - name: Changelog parses
+        run: |
+          python - <<'EOF'
+          import pathlib, re
+          text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          heads = re.findall(r"^## \[([^\]]+)\]", text, re.M)
+          bad = [h for h in heads if h != "Unreleased" and not re.fullmatch(r"\d+\.\d+\.\d+(-(alpha|beta|rc)\.\d+)?", h)]
+          assert heads, "no version sections"
+          assert not bad, f"bad version headings: {bad}"
+          print("sections:", heads)
+          EOF

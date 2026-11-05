@@ -1,0 +1,71 @@
+# ---------------------------------------------------------------------------
+# Third-party material: Creality/Orbbec binaries, firmware and decompiler output.
+# Never commit these; the repo must stand on its own without them.
+# ---------------------------------------------------------------------------
+/apk/
+/firmware/
+/re/
+/mirror_out/
+*.rea-snapshot
+
+# RE notes that quote decompiled code / binary addresses. Kept local until they
+# have been reviewed for public release; remove a line to opt that file in.
+/docs/cameraserver-findings.md
+/docs/mirroring-pc-findings.md
+/docs/mirroring-phone-findings.md
+/docs/scan-bridge-protocol.md
+/docs/scanner-models-findings.md
+/docs/scanner-models.re.json
+
+# ---------------------------------------------------------------------------
+# Local toolchain and personal setup
+# ---------------------------------------------------------------------------
+/android-sdk/
+*.log
+*.jsonl
+
+# ---------------------------------------------------------------------------
+# Signing material: release keys live outside the repo (CI gets them from secrets)
+# ---------------------------------------------------------------------------
+*.keystore
+*.jks
+*.p12
+*.pem
+keystore.properties
+play-service-account*.json
+
+# ---------------------------------------------------------------------------
+# Build output
+# ---------------------------------------------------------------------------
+build/
+.gradle/
+local.properties
+*.apk
+*.aab
+*.idsig
+captures/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Bridge runtime state (hot-reloaded local config)
+allow.json
+stream_map.json
+scanners.local.json
+
+# Editors / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Old screenshots with real network/device details; the published ones live in docs/screenshots/.
+/android/CRBYOB/*.png
+.kotlin/
+
+# Maintainer runbook: kept out of the public repo (the owner's copy stays local)
+/docs/releasing.md
