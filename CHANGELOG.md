@@ -8,6 +8,12 @@ Format: one `## [X.Y.Z] - YYYY-MM-DD` section per release (newest first), with `
 for people using the app. Collect changes under `## [Unreleased]` and rename it to the version and date
 when tagging. A release build fails if its version has no dated section here.
 
+## [Unreleased]
+
+### Changed
+- The CR-Scan Ferret Pro is now tested and supported, thanks to a device report. The dashboard no longer
+  warns that its streams may be wrong.
+
 ## [0.1.0] - 2026-11-05
 
 First public release. CR-BYOB turns an Android phone into a Wi-Fi bridge for Creality's CR-Scan Otter,

@@ -63,7 +63,8 @@ finds it over the network like the real thing.
 | CR-Scan Otter | ✅ Tested |
 | CR-Scan Otter Lite, Otter Lite Basic | ❔ Untested (same design as the Otter) |
 | CR-Scan Raptor, Raptor X, Raptor Pro, Raptor Pro Max | ❔ Untested |
-| CR-Scan Ferret, Ferret Pro | ❔ Untested |
+| CR-Scan Ferret Pro | ✅ Tested (fw 1.2.7, [device report](https://github.com/NickLD/CR-BYOB/issues/2) by [@Xalies](https://github.com/Xalies)) |
+| CR-Scan Ferret | ❔ Untested (same design as the Ferret Pro) |
 | Sermoon X1, Sermoon S1, Creality Pika, M1 Ultra | ❔ Untested |
 | Sermoon P1, Sermoon P1 Lite | ❌ Not supported (they don't work through a Scan Bridge) |
 
@@ -80,9 +81,10 @@ scanner's streams need more bandwidth than USB 2 provides.
 | Phone | Android | Ethernet | Wi-Fi | Wi-Fi Direct | This phone only (Local Mobile App Scanning) | Reported by |
 |---|---|:---:|:---:|:---:|:---:|---|
 | [Google Pixel 10 Pro XL](docs/phones.md#google-pixel-10-pro-xl) | 16 | ✅ | ✅ | ✅ | ✅ | [@NickLD](https://github.com/NickLD) |
+| [Google Pixel 6](docs/phones.md#google-pixel-6) | 17 | — | ✅ | ✅ | — | [@Xalies](https://github.com/Xalies) |
 | [Google Pixel 5](docs/phones.md#google-pixel-5) | 14 | ✅ | 🟡 | 🟡 | ⚠️ | [@NickLD](https://github.com/NickLD) |
 
-✅ Full performance &nbsp;·&nbsp; 🟡 Works, with limits &nbsp;·&nbsp; ⚠️ Not recommended &nbsp;·&nbsp;
+✅ Full performance &nbsp;·&nbsp; 🟡 Works, with limits &nbsp;·&nbsp; ⚠️ Not recommended &nbsp;·&nbsp; — Not tested &nbsp;·&nbsp;
 **[Notes per phone](docs/phones.md)**
 
 > [!TIP]

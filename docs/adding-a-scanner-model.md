@@ -1,8 +1,9 @@
 # Adding or fixing a scanner model
 
 The app gets every model-specific setting from one table: [`models/scanners.json`](../models/scanners.json),
-bundled into the APK. The CR-Scan Otter (PID `0x06DA`) is the only model tested end to end
-(`status: verified`). Every other entry comes from reverse engineering and has never been run on hardware.
+bundled into the APK. The CR-Scan Otter (PID `0x06DA`) and the CR-Scan Ferret Pro (PID `0x06A1`) are the
+only models tested end to end (`status: verified`). Every other entry comes from reverse engineering and has
+never been run on hardware.
 If you own one of those scanners, a test report helps a lot: open a
 [Device report](https://github.com/NickLD/CR-BYOB/issues/new?template=device-report.yml).
 
