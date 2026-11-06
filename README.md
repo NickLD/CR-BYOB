@@ -41,6 +41,15 @@ finds it over the network like the real thing.
 - **Update check** against GitHub Releases, with release notes after each update.
 
 <p align="center">
+  <img src="docs/photos/rig-in-hand.jpg" alt="Scanning a die grinder with a CR-Scan Otter and a phone running CR-BYOB, in a workshop" height="360">&nbsp;&nbsp;
+  <img src="docs/photos/rig-side.jpg" alt="A CR-Scan Otter, power bank, USB-C hub and phone mounted on a 3D-printed grip" height="360">
+  <br>
+  <sub>Left: scanning a die grinder in a detached workshop, a separate building from the scanning PC, over a
+  shared network. All three streams run at the full 15 fps. Right: the handheld rig, with the Otter, a power
+  bank, a USB-C hub and the phone on a 3D-printed grip.</sub>
+</p>
+
+<p align="center">
   <img src="docs/screenshots/mirror-landscape.png" alt="Mirror viewer in landscape during a scan over Wi-Fi Direct" width="100%">
   <br>
   <sub>The mirror viewer in landscape, during a scan over Wi-Fi Direct.</sub>
