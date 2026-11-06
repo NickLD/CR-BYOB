@@ -23,6 +23,7 @@ import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.RadioGroup;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import org.json.JSONObject;
 
@@ -70,10 +71,11 @@ public final class MirrorActivity extends Activity implements MirrorSession.Ui {
     private LinearLayout bar;
     private LinearLayout grid;                   // landscape: visible scan buttons, two per row
     private TextView btnHint;
-    private final Button[] scanBtn = new Button[5];
+    private final Button[] scanBtn = new Button[6];     // Start, Pause, Finish, Delete, New scan, Lighting
     private static final String[] SCAN_RPC = {"scanStart", "pauseScan", "stopScan", "clearScan", "scanCreate"};
     private static final int[] SCAN_TYPE = {1, 2, 3, 4, 5};
     private JSONObject btnState;
+    private final java.util.Map<String, AlertDialog> pcDialogs = new java.util.HashMap<>();
     private boolean btnResume;
     private String scanLabel = "";
     // collapsed strip (landscape)
@@ -208,8 +210,8 @@ public final class MirrorActivity extends Activity implements MirrorSession.Ui {
         bar = new LinearLayout(this);
         grid = new LinearLayout(this);
         grid.setOrientation(LinearLayout.VERTICAL);
-        String[] labels = {"Start", "Pause", "Finish", "Cancel", "New scan"};
-        for (int i = 0; i < 5; i++) {
+        String[] labels = {"Start", "Pause", "Finish", "Delete", "New scan…", "Lighting…"};
+        for (int i = 0; i < scanBtn.length; i++) {
             final int idx = i;
             Button bt = button(labels[i], () -> onScanButton(idx));
             bt.setVisibility(View.GONE);
@@ -391,6 +393,332 @@ public final class MirrorActivity extends Activity implements MirrorSession.Ui {
         return 0;
     }
 
+    // ------------------------------------------------------------------ Creality Scan state, messages, dialogs
+    @Override
+    public void onPcKeys() {
+        refreshButtons();
+        refreshSetup();
+    }
+
+    /**
+     * Creality Scan's notifications go on the page, along the bottom of the 3D view (so the buttons never move):
+     * persistent ones (the scan stage) until Creality Scan hides them, others for 6 s at most.
+     */
+    @Override
+    public void onNotification(JSONObject n) {
+        int type = n.optInt("NotificationType"), content = n.optInt("ContentType");
+        boolean on = n.optBoolean("IsVisible") && content != 0;
+        ses.pageNote(type == 2 ? "persist" : "toast", on ? MirrorProtocol.text(this, "notification_content", content) : "",
+                n.optInt("LevelType"));
+    }
+
+    @Override
+    public void onLoading(boolean visible) {
+        ses.pageNote("loading", visible ? "1" : "", 0);
+    }
+
+    /** Creality Scan's dialog on the phone, with its own buttons; the answer goes back as dialog.buttonClick. */
+    @Override
+    public void onDialog(JSONObject d) {
+        String id = d.optString("DialogId");
+        AlertDialog old = pcDialogs.remove(id);
+        if (old != null) old.dismiss();
+        if (!d.optBoolean("IsVisible") || isFinishing()) return;
+        String title = MirrorProtocol.format(MirrorProtocol.text(this, "dialog_title", d.optInt("TitleType")), d.optJSONArray("TitleArgs"));
+        int ct = d.optInt("ContentType");
+        String content = ct != 0 ? MirrorProtocol.format(MirrorProtocol.text(this, "dialog_content", ct), d.optJSONArray("ContentArgs")) : "";
+        AlertDialog.Builder b = new AlertDialog.Builder(this).setTitle("Creality Scan")
+                .setMessage(content.isEmpty() ? title : title + "\n\n" + content).setCancelable(false);
+        String[] side = {"Left", "Middle", "Right"};
+        for (int i = 0; i < 3; i++) {
+            if (!d.optBoolean("Has" + side[i] + "Button")) continue;
+            int tt = d.optInt(side[i] + "ButtonTextType");
+            String label = tt != 0 ? MirrorProtocol.text(this, "dialog_button_text", tt) : "OK";
+            final int type = i + 1;                       // DialogButtonType: Left 1, Middle 2, Right 3
+            android.content.DialogInterface.OnClickListener l = (x, w) -> {
+                pcDialogs.remove(id);
+                try {
+                    ses.rpc("dialog.buttonClick", new JSONObject().put("DialogId", id).put("ButtonType", type));
+                } catch (Exception ignored) {
+                }
+            };
+            if (i == 0) b.setNegativeButton(label, l);
+            else if (i == 1) b.setNeutralButton(label, l);
+            else b.setPositiveButton(label, l);
+        }
+        AlertDialog dlg = b.create();
+        pcDialogs.put(id, dlg);
+        Widgets.showStyled(dlg);
+    }
+
+    // ------------------------------------------------------------------ new scan sheet
+    /** Equal-width segments, the selected one in blue. */
+    private LinearLayout segments(String[] labels, int selected, java.util.function.IntConsumer onPick) {
+        int perRow = labels.length;                       // a dialog has room for one row
+        LinearLayout rows = new LinearLayout(this);
+        rows.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout row = null;
+        for (int i = 0; i < labels.length; i++) {
+            if (i % perRow == 0) {
+                row = new LinearLayout(this);
+                LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                rl.topMargin = i == 0 ? 0 : dp(6);
+                rows.addView(row, rl);
+            }
+            final int idx = i;
+            TextView t = text(14, i == selected ? BG : TEXT, i == selected);
+            t.setText(labels[i]);
+            t.setGravity(Gravity.CENTER);
+            t.setPadding(dp(2), dp(9), dp(2), dp(9));
+            t.setBackground(rounded(i == selected ? BLUE : LINE, dp(9)));
+            t.setOnClickListener(v -> onPick.accept(idx));
+            int col = i % perRow;
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+            lp.setMargins(col == 0 ? 0 : dp(3), 0, col == perRow - 1 ? 0 : dp(3), 0);
+            row.addView(t, lp);
+        }
+        // pad the last row so its segments keep the same width as the rows above
+        for (int j = labels.length % perRow == 0 ? perRow : labels.length % perRow; j < perRow && labels.length > perRow; j++)
+            row.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
+        return rows;
+    }
+
+    private void sheetSection(LinearLayout box, String title, int key, java.util.List<Integer> values, int current,
+                              java.util.function.IntConsumer set, Runnable rebuild) {
+        if (values.size() < 2) return;                    // nothing to choose
+        TextView t = text(14, SUB, true);
+        t.setText(title);
+        t.setPadding(0, dp(12), 0, dp(5));
+        box.addView(t);
+        String[] labels = new String[values.size()];
+        for (int i = 0; i < labels.length; i++)        // "Black Object" -> "Black": four fit in a row
+            labels[i] = MirrorProtocol.scanValue(this, key, values.get(i)).replace(" Object", "");
+        box.addView(segments(labels, values.indexOf(current), i -> { set.accept(values.get(i)); rebuild.run(); }));
+        String tip = MirrorProtocol.scanTip(this, key, current);      // Creality Scan's own description
+        if (!tip.isEmpty()) {
+            TextView tv = text(12, SUB, false);
+            tv.setSingleLine(false);
+            tv.setMaxLines(6);
+            tv.setEllipsize(null);
+            tv.setText(tip);
+            tv.setPadding(dp(2), dp(5), dp(2), 0);
+            box.addView(tv);
+        }
+    }
+
+    /**
+     * New scan from the phone: the settings Creality Scan supports for this scanner (SupportedScanConfig), starting
+     * from its last ones (AppliedScanParams). Create sends scan.setParams; Creality Scan creates the scan and starts
+     * the preview, and Start then begins scanning. During the preview (change = true) the same sheet changes the
+     * settings: scan.setParams then makes Creality Scan drop the empty preview and preview again with them.
+     */
+    private void showNewScan() {
+        showNewScan(false);
+    }
+
+    private void showNewScan(boolean change) {
+        JSONObject k = ses.pcKeys();
+        final ScanSetup ss;
+        try {
+            ss = new ScanSetup(k.opt("SupportedScanConfig"), k.optJSONObject("AppliedScanParams"));
+        } catch (Exception e) {
+            Toast.makeText(this, "Creality Scan didn't send its scan options", Toast.LENGTH_LONG).show();
+            return;
+        }
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(22), 0, dp(22), dp(4));
+        Runnable[] rebuild = new Runnable[1];
+        rebuild[0] = () -> {
+            box.removeAllViews();
+            fillSetup(box, ss, rebuild[0]);
+            TextView note = text(12, SUB, false);
+            note.setSingleLine(false);
+            note.setMaxLines(4);
+            note.setText(change ? "Creality Scan restarts the preview with these. Then tap Start to scan."
+                    : "Creality Scan applies these, creates the scan and starts the preview. Then tap Start to scan.");
+            note.setPadding(0, dp(14), 0, 0);
+            box.addView(note);
+        };
+        rebuild[0].run();
+        android.widget.ScrollView sv = new android.widget.ScrollView(this);
+        sv.addView(box);
+        AlertDialog d = new AlertDialog.Builder(this).setTitle(change ? "Scan settings" : "New scan").setView(sv)
+                .setPositiveButton(change ? "Apply" : "Create", (x, w) -> sendSetup(ss))
+                .setNegativeButton("Cancel", null).create();
+        setupDialog = d;
+        setupForPreview = change;
+        Widgets.showStyled(d);
+    }
+
+    /** The choice sections the scanner supports (one-option sections are left out). */
+    private void fillSetup(LinearLayout box, ScanSetup ss, Runnable rebuild) {
+        ss.fix();
+        sheetSection(box, "Projection", ScanSetup.K_PROJECTION, ss.projections(), ss.projection, v -> ss.projection = v, rebuild);
+        sheetSection(box, "Object", ScanSetup.K_MODE, ss.modes(), ss.mode, v -> ss.mode = v, rebuild);
+        sheetSection(box, "Alignment", ScanSetup.K_FUSE, ss.fuses(), ss.fuse, v -> ss.fuse = v, rebuild);
+        sheetSection(box, "Accuracy", ScanSetup.K_ACCURACY, ss.accuracies(), ss.accuracy, v -> ss.accuracy = v, rebuild);
+        sheetSection(box, "Field of view", ScanSetup.K_FOV, ss.fovs(), ss.fov, v -> ss.fov = v, rebuild);
+        sheetSection(box, "Texture", ScanSetup.K_TEXTURE, ss.textures(), ss.texture, v -> ss.texture = v, rebuild);
+        sheetSection(box, "Object color", ScanSetup.K_MATERIAL, ss.materials(), ss.material, v -> ss.material = v, rebuild);
+    }
+
+    /**
+     * Creality Scan creates the scan and starts the preview on scan.setParams alone (seen 2026-11-06); scanCreate
+     * right after it drew a "PC is being operated" warning. So scanCreate is only a fallback when no scan appeared.
+     */
+    private void sendSetup(ScanSetup ss) {
+        try {
+            // Creality Scan passes its New Scan page on the way back to the preview: don't pop the sheet up there.
+            quietSetupUntil = System.currentTimeMillis() + 4000;
+            ses.rpc("scan.setParams", ss.params());
+            h.postDelayed(() -> {
+                JSONObject pk = ses.pcKeys();
+                if (pk.optInt("ScanStatus", 0) == 0 && pk.optInt("ScanParamsModifyRange", 0) == 1) ses.rpc("scanCreate");
+            }, 2500);
+        } catch (Exception e) {
+            Toast.makeText(this, "Couldn't send the settings: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /** A scan exists but scanning hasn't started (Creality Scan's preview): nothing to lose by going back. */
+    private boolean previewing() {
+        JSONObject k = ses.pcKeys();
+        return k.optInt("ScanStatus", 0) == 2;
+    }
+
+    // Settings… during the preview: scan.setParams. Creality Scan drops the empty preview, creates the scan again
+    // with the new settings and previews (its ApplyScanParamsAndRepreview, seen 2026-11-06). It also leaves the
+    // edit mode a pause puts it in: after Pause and Delete, scanCreate (its New button) instead opened
+    // "Abandon current editing?" on the PC only, and it refused every phone command until that was answered there.
+    private void changeSettings() {
+        showNewScan(true);
+    }
+
+    // ------------------------------------------------------------------ New Scan page on the PC
+    private AlertDialog setupDialog;
+    private boolean setupAutoShown, setupForPreview;
+    private long quietSetupUntil;
+
+    /** Creality Scan is on its scan page with no scan created yet: its own "new scan" settings are open. */
+    private boolean pcOnNewScanPage() {
+        JSONObject k = ses.pcKeys();
+        if (k.optInt("ScanStatus", -1) != 0 || k.optInt("ScanParamsModifyRange", 0) != 1 || !k.has("SupportedScanConfig")) return false;
+        try {
+            byte[] sm = android.util.Base64.decode(k.optString("StateMachineState", ""), android.util.Base64.DEFAULT);
+            return sm.length > 0 && sm[0] == 2;           // MainStateSyncKey ScanFusionState
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * When Creality Scan opens its New Scan page, the New Scan dialog opens on the phone by itself (once per visit;
+     * New scan… reopens it). It closes when the PC leaves the page: scan created, or back on the PC.
+     */
+    private void refreshSetup() {
+        if (System.currentTimeMillis() < quietSetupUntil) return;
+        boolean onPage = pcOnNewScanPage();
+        if (setupForPreview && setupDialog != null && setupDialog.isShowing()) {
+            if (!previewing()) {                          // scanning started (or left) on the PC
+                setupDialog.dismiss();
+                setupDialog = null;
+            }
+            return;
+        }
+        if (onPage && !setupAutoShown && !isFinishing()) {
+            setupAutoShown = true;
+            if (setupDialog == null || !setupDialog.isShowing()) showNewScan();
+        } else if (!onPage) {
+            setupAutoShown = false;
+            if (setupDialog != null && setupDialog.isShowing()) setupDialog.dismiss();
+            setupDialog = null;
+        }
+    }
+
+    // ------------------------------------------------------------------ lights & exposure
+    private android.widget.SeekBar slider(int min, int max, int value, boolean enabled, java.util.function.IntConsumer onSet,
+                                         TextView valueLabel) {
+        android.widget.SeekBar sb = new android.widget.SeekBar(this);
+        sb.setMax(Math.max(1, max - min));
+        sb.setProgress(Math.max(0, Math.min(max, value) - min));
+        sb.setEnabled(enabled);
+        sb.setAlpha(enabled ? 1f : 0.4f);
+        sb.setProgressTintList(android.content.res.ColorStateList.valueOf(BLUE));
+        sb.setThumbTintList(android.content.res.ColorStateList.valueOf(BLUE));
+        sb.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(android.widget.SeekBar s, int pr, boolean user) {
+                valueLabel.setText(String.valueOf(pr + min));
+            }
+            @Override public void onStartTrackingTouch(android.widget.SeekBar s) { }
+            @Override public void onStopTrackingTouch(android.widget.SeekBar s) { onSet.accept(s.getProgress() + min); }
+        });
+        return sb;
+    }
+
+    private android.widget.Switch controlSwitch(String label, boolean on) {
+        android.widget.Switch sw = new android.widget.Switch(this);
+        sw.setText(label);
+        sw.setTextColor(TEXT);
+        sw.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        sw.setChecked(on);
+        sw.setPadding(0, dp(10), 0, dp(2));
+        return sw;
+    }
+
+    /** An auto switch, then a slider for the manual value (enabled only when auto is off). */
+    private void autoAndSlider(LinearLayout box, String title, boolean auto, String autoCmd, int min, int max, int value,
+                               String valueCmd) {
+        android.widget.Switch sw = controlSwitch(title + ": auto", auto);
+        box.addView(sw);
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView val = text(13, SUB, false);
+        val.setText(String.valueOf(value));
+        val.setMinWidth(dp(44));
+        val.setGravity(Gravity.END);
+        android.widget.SeekBar sb = slider(min, max, value, !auto, v -> ses.rpc(valueCmd, new org.json.JSONArray().put(v)), val);
+        row.addView(sb, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        row.addView(val);
+        box.addView(row);
+        sw.setOnCheckedChangeListener((v, on) -> {
+            ses.rpc(autoCmd, new org.json.JSONArray().put(on));
+            sb.setEnabled(!on);
+            sb.setAlpha(on ? 0.4f : 1f);
+        });
+    }
+
+    /**
+     * Fill light and exposure, as Creality Scan reports them for this scanner (state keys RgbFillLight*, Ir*, Rgb*);
+     * only what the scanner supports is shown. Commands: rgb.fillLight, ir.expSwitchAutoMode / ir.expChange,
+     * ir.laserSwitchAutoMode / ir.laserChange, rgb.switchAutoMode / rgb.expChange, each with a [value] param.
+     */
+    private void showControls() {
+        JSONObject k = ses.pcKeys();
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(22), 0, dp(22), dp(4));
+        if (k.optBoolean("RgbFillLightSupport")) {
+            android.widget.Switch fill = controlSwitch("Fill light", k.optBoolean("RgbFillLightOn"));
+            fill.setOnCheckedChangeListener((v, on) -> ses.rpc("rgb.fillLight", new org.json.JSONArray().put(on)));
+            box.addView(fill);
+        }
+        if (k.has("IrExpValue"))
+            autoAndSlider(box, "IR exposure", k.optBoolean("IrExpAutoMode", true), "ir.expSwitchAutoMode",
+                    k.optInt("IrExpMin", 1), k.optInt("IrExpMax", 1000), k.optInt("IrExpValue", 500), "ir.expChange");
+        if (k.optBoolean("IrLaserVisible") && k.has("IrLaserValue"))
+            autoAndSlider(box, "Laser power", k.optBoolean("IrLaserAutoMode", true), "ir.laserSwitchAutoMode",
+                    k.optInt("IrLaserMin", 1), k.optInt("IrLaserMax", 1000), k.optInt("IrLaserValue", 500), "ir.laserChange");
+        if (k.optBoolean("RgbRenderSupport") && k.has("RgbExpValue"))
+            autoAndSlider(box, "Color exposure", k.optBoolean("RgbAutoMode", true), "rgb.switchAutoMode",
+                    k.optInt("RgbExpMin", 1), k.optInt("RgbExpMax", 1000), k.optInt("RgbExpValue", 500), "rgb.expChange");
+        android.widget.ScrollView sv = new android.widget.ScrollView(this);
+        sv.addView(box);
+        AlertDialog d = new AlertDialog.Builder(this).setTitle("Lights & exposure").setView(sv)
+                .setPositiveButton("Done", null).create();
+        Widgets.showStyled(d);
+    }
+
     private void closeSession() {
         ses.close();
         finish();
@@ -480,23 +808,25 @@ public final class MirrorActivity extends Activity implements MirrorSession.Ui {
             subText.setMaxLines(2);
             root.setOrientation(LinearLayout.HORIZONTAL);
             ses.attach(root, new LinearLayout.LayoutParams(0, match, 1));
+            // The information scrolls if it doesn't fit (while scanning: four stats plus the Wi-Fi rows); the scan
+            // buttons stay pinned at the bottom, always on screen.
             LinearLayout side = new LinearLayout(this);
             side.setOrientation(LinearLayout.VERTICAL);
             side.setPadding(dp(TAB_CLEAR_DP), 0, 0, 0);        // the drawer tab never covers content
-            side.addView(top);
-            side.addView(panelCard, pl);
-            side.addView(statsBox);                  // scan state + stats under the panel
-            side.addView(new View(this), new LinearLayout.LayoutParams(match, 0, 1));   // flexible gap
+            LinearLayout info = new LinearLayout(this);
+            info.setOrientation(LinearLayout.VERTICAL);
+            info.addView(top);
+            info.addView(panelCard, pl);
+            info.addView(statsBox);                  // scan state + stats under the panel
+            android.widget.ScrollView sv = new android.widget.ScrollView(this);
+            sv.setVerticalScrollBarEnabled(false);
+            sv.addView(info, new android.widget.FrameLayout.LayoutParams(match, wrap));
+            side.addView(sv, new LinearLayout.LayoutParams(match, 0, 1));
             btnHint.setPadding(dp(10), 0, dp(10), 0);
             side.addView(btnHint);
             grid.setPadding(dp(5), 0, dp(5), dp(6));   // rows are built from the visible buttons in refreshButtons()
             side.addView(grid);                      // scan buttons anchored at the bottom
-            // safety net only: at 2340/2404x1080 the column fits without scrolling
-            android.widget.ScrollView sv = new android.widget.ScrollView(this);
-            sv.setVerticalScrollBarEnabled(false);
-            sv.setFillViewport(true);                // lets the gap push the buttons to the bottom
-            sv.addView(side, new android.widget.FrameLayout.LayoutParams(match, match));
-            root.addView(sv, new LinearLayout.LayoutParams(dp(SIDE_DP), match));
+            root.addView(side, new LinearLayout.LayoutParams(dp(SIDE_DP), match));
         } else {
             root.setOrientation(LinearLayout.HORIZONTAL);
             ses.attach(root, new LinearLayout.LayoutParams(0, match, 1));
@@ -526,7 +856,9 @@ public final class MirrorActivity extends Activity implements MirrorSession.Ui {
             WebViewEval.run(ses, "setCompact(" + compactPage + ")");
         });
         setContentView(content);
+        gridKey = "";
         refreshButtons();
+        refreshSetup();
         refreshStats();
         refreshPanel();
     }
@@ -658,7 +990,7 @@ public final class MirrorActivity extends Activity implements MirrorSession.Ui {
         btnState = b;
         btnResume = resume;
         int shown = 0;
-        for (int i = 0; i < 5; i++) if (state(i) != 2) shown++;
+        for (int i = 0; i < scanBtn.length; i++) if (state(i) != 2) shown++;
         btnHint.setText(!known ? "Scan buttons appear when Creality Scan reports its state"
                 : shown == 0 ? "No scan actions available right now"
                 : pcDriven ? "" : "Buttons estimated from the scan status");
@@ -680,19 +1012,46 @@ public final class MirrorActivity extends Activity implements MirrorSession.Ui {
     }
 
     private int state(int i) {
+        if (i == 4 && (canSetUpScan() || previewing())) return 1;
+        // Delete while paused, as on the desktop: Creality Scan reports Clear as shown for a moment after a pause,
+        // then hidden ("4":1 then "4":2), though its own Delete button stays and clearScan works then.
+        if (i == 3 && ses.pcKeys().optInt("ScanStatus", 0) == 4) return 1;
+        if (i == 5) return controlsAvailable() ? 1 : 2;
         return btnState != null ? btnState.optInt(String.valueOf(SCAN_TYPE[i]), 2) : 2;
     }
 
+    /** No scan created yet (ScanParamsModifyRange All) and Creality Scan said what it supports. */
+    private boolean canSetUpScan() {
+        JSONObject k = ses.pcKeys();
+        return k.optInt("ScanParamsModifyRange", 0) == 1 && k.has("SupportedScanConfig");
+    }
+
+    /** A scan exists (created, previewing, scanning or paused) and Creality Scan reported its camera controls. */
+    private boolean controlsAvailable() {
+        JSONObject k = ses.pcKeys();
+        int st = k.optInt("ScanStatus", 0);
+        return st >= 1 && st <= 4 && (k.has("IrExpValue") || k.optBoolean("RgbFillLightSupport"));
+    }
+
+    private String gridKey = "";
+
     private void refreshButtons() {
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < scanBtn.length; i++) {
             int st = state(i);
             Button bt = scanBtn[i];
             bt.setVisibility(st == 2 ? View.GONE : View.VISIBLE);
             bt.setEnabled(st == 1);
             bt.setAlpha(st == 3 ? 0.4f : 1f);
             if (i == 0) bt.setText(btnResume ? "Resume" : "Start");
+            if (i == 4) bt.setText(previewing() ? "Settings…" : "New scan…");
         }
-        if (landscape && !collapsed && grid != null) {     // two per row, visible buttons only
+        // Rebuild the landscape grid only when which buttons are visible changes. This runs on every state update
+        // (many per second while scanning: frame and point counters), and re-adding a button mid-tap loses the
+        // tap: Pause and Finish didn't respond until the scan was paused.
+        StringBuilder vis = new StringBuilder(landscape && !collapsed ? "L" : "P");
+        for (Button b : scanBtn) vis.append(b.getVisibility() == View.VISIBLE ? '1' : '0');
+        if (landscape && !collapsed && grid != null && (!vis.toString().equals(gridKey) || grid.getChildCount() == 0)) {
+            gridKey = vis.toString();
             grid.removeAllViews();
             for (Button b : scanBtn) detach(b);
             LinearLayout row = null;
@@ -804,15 +1163,20 @@ public final class MirrorActivity extends Activity implements MirrorSession.Ui {
 
     // ------------------------------------------------------------------ scan buttons
     private void onScanButton(int i) {
-        if (i == 3) {        // Cancel discards the scan: confirm
-            new AlertDialog.Builder(this)
-                    .setTitle("Cancel this scan?")
-                    .setMessage("Creality Scan will discard the current scan data.")
-                    .setPositiveButton("Discard", (d, w) -> ses.rpc(SCAN_RPC[3]))
-                    .setNegativeButton("Keep", null)
-                    .show();
+        if (i == 4 && canSetUpScan()) {
+            showNewScan();
             return;
         }
+        if (i == 4 && previewing()) {
+            changeSettings();
+            return;
+        }
+        if (i == 5) {
+            showControls();
+            return;
+        }
+        // Delete (clearScan): Creality Scan asks "Delete scan?" itself and that dialog shows on the phone,
+        // so no confirmation of our own (it would ask twice).
         ses.rpc(SCAN_RPC[i]);
     }
 

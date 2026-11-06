@@ -47,6 +47,14 @@ final class MirrorSession {
         void onButtons(JSONObject buttons, boolean known, boolean resume, boolean pcDriven);
         void onScanLabel(String label);
         void onScanStats(JSONArray stats, String dev);
+        /** A Creality Scan state key changed; the latest values are in {@link #pcKeys()}. */
+        default void onPcKeys() {}
+        /** Creality Scan's notification {NotificationType, ContentType, LevelType, IsVisible}. */
+        default void onNotification(JSONObject n) {}
+        /** Creality Scan's loading spinner. */
+        default void onLoading(boolean visible) {}
+        /** Creality Scan's dialog (DialogMessage), shown or hidden. */
+        default void onDialog(JSONObject d) {}
         /** The mirror frame-rate pill on the page was tapped. */
         void onMirrorFpsMenu();
     }
@@ -186,6 +194,11 @@ final class MirrorSession {
         }
     }
 
+    /** A Creality Scan message on the page (slot persist / toast / loading; "" hides it). */
+    void pageNote(String slot, String text, int level) {
+        js("setNote(" + JSONObject.quote(slot) + "," + JSONObject.quote(text == null ? "" : text) + "," + level + ")");
+    }
+
     /** The bridge's link cells, {label, value}, for the page's portrait info block. */
     void pageLink(java.util.List<String[]> cells) {
         JSONArray a = new JSONArray();
@@ -248,6 +261,7 @@ final class MirrorSession {
     }
 
     private void resetSessionState() {
+        pcKeys = new JSONObject();
         connected = false;
         rpcReady = false;
         lowQuality = false;
@@ -289,6 +303,21 @@ final class MirrorSession {
         lastAutoTry = now;
         int ap = prefs.getInt("mirror_auto_port", SIGNAL_PORT);   // test hook: point auto-connect at a fake PC port
         connect(ap == SIGNAL_PORT ? ip : ip + ":" + ap, "auto (broadcast)");
+    }
+
+    /** Creality Scan's state keys by name (stateSync), values as parsed JSON; reset on each connection. Main thread. */
+    private JSONObject pcKeys = new JSONObject();
+
+    JSONObject pcKeys() { return pcKeys; }
+
+    /** A notification with params (an object or a [value] array). */
+    void rpc(String method, Object params) {
+        if (!connected) {
+            status("Not connected", "Connect to Creality Scan first");
+            return;
+        }
+        js("rpcNotify(" + JSONObject.quote(method) + "," + params + ")");
+        BLog.log("mirror_cmd", "method", method, "params", String.valueOf(params));
     }
 
     void rpc(String method) {
@@ -371,9 +400,17 @@ final class MirrorSession {
         return "setMirrorFps(" + adaptSetting() + "," + fps + "," + m[0] + "," + m[1] + "," + degraded + ")";
     }
 
+    // Creality Scan stalls the mirror while it creates a scan or starts the preview: not a link problem.
+    private boolean pcLoading;
+    private long autoQuietUntil;
+
+    private void quietAuto(long ms) {
+        autoQuietUntil = Math.max(autoQuietUntil, System.currentTimeMillis() + ms);
+    }
+
     /** Every stats interval (~5 s): worstFreezeMs is the longest any one view froze in it. */
     private void autoAdjust(long worstFreezeMs, long now) {
-        if (!adaptSetting() || !visible || lowQuality || !rpcReady) {
+        if (!adaptSetting() || !visible || lowQuality || !rpcReady || pcLoading || now < autoQuietUntil) {
             auto.pause(now);
             return;
         }
@@ -655,7 +692,25 @@ final class MirrorSession {
 
         @JavascriptInterface
         public void rpcIn(String text) {
-            BLog.log("mirror_rpc_in", "msg", text.length() > 300 ? text.substring(0, 300) : text);
+            BLog.log("mirror_rpc_in", "msg", text.length() > 4000 ? text.substring(0, 4000) : text);
+            try {
+                JSONObject m = new JSONObject(text);
+                String method = m.optString("method");
+                Object pr = m.opt("params");
+                if (pr instanceof JSONArray && ((JSONArray) pr).length() == 1) pr = ((JSONArray) pr).opt(0);
+                final JSONObject p = pr instanceof JSONObject ? (JSONObject) pr : new JSONObject();
+                switch (method) {
+                    case "notification": h.post(() -> { if (ui != null) ui.onNotification(p); }); break;
+                    case "loading": h.post(() -> {
+                        pcLoading = p.optBoolean("IsVisible");
+                        quietAuto(10_000);
+                        if (ui != null) ui.onLoading(pcLoading);
+                    }); break;
+                    case "dialog": h.post(() -> { if (ui != null) ui.onDialog(p); }); break;
+                    default: break;
+                }
+            } catch (Exception ignored) {
+            }
         }
 
         private final java.util.Map<String, JSONObject> prevVideo = new java.util.HashMap<>();
@@ -696,6 +751,25 @@ final class MirrorSession {
             initRes = visibleRes();
             int[] m = MirrorSession.this.modelSize(initRes);
             return m[0] + "," + m[1];
+        }
+
+        /** A stateSync key whose value changed (see logStateChanges in mirror.html). */
+        @JavascriptInterface
+        public void stateKey(String key, String value) {
+            BLog.log("mirror_state", "key", key, "value", value == null ? null
+                    : value.length() > 16000 ? value.substring(0, 16000) : value);
+            Object v;
+            try {
+                v = value == null ? JSONObject.NULL : new org.json.JSONTokener(value).nextValue();
+            } catch (Exception e) {
+                v = value;
+            }
+            final Object val = v;
+            h.post(() -> {
+                if ("ScanStatus".equals(key) || "StateMachineState".equals(key)) quietAuto(10_000);
+                try { pcKeys.put(key, val); } catch (Exception ignored) { }
+                if (ui != null) ui.onPcKeys();
+            });
         }
 
         @JavascriptInterface

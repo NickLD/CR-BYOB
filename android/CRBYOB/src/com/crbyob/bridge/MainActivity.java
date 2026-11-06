@@ -263,6 +263,7 @@ public final class MainActivity extends Activity {
         root.addView(linkCard, root.indexOfChild(streamsCard));
         buildSession(root);
         buildNetwork(root);
+        buildExperimental(root);
         buildEvents(root);
         buildFooter(root);
         setContentView(scroll);
@@ -715,9 +716,19 @@ public final class MainActivity extends Activity {
         ethBox.addView(ethLine, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         c.addView(ethBox);
 
+    }
+
+    /** Experimental: settings that go beyond what Creality Scan does with its own Scan Bridge. */
+    private void buildExperimental(LinearLayout root) {
+        LinearLayout c = card(root, "🧪 Experimental");
+        TextView intro = text(13, SUB, false);
+        intro.setText("Experimental features, may be buggy.");
+        intro.setPadding(0, 0, 0, dp(4));
+        c.addView(intro);
+
         // Scanner frame rate: Stock / Boost / Max, resolved against the attached scanner (FpsChoice)
-        fpsTitle = label("Scanner frame rate");
-        fpsTitle.setPadding(0, dp(14), 0, dp(2));
+        fpsTitle = label("Scanner frame-rate override");
+        fpsTitle.setPadding(0, dp(8), 0, dp(2));
         c.addView(fpsTitle);
         fpsGroup = new RadioGroup(this);
         for (String mode : new String[]{FpsChoice.STOCK, FpsChoice.BOOST, FpsChoice.MAX}) {
@@ -1119,6 +1130,8 @@ public final class MainActivity extends Activity {
         v.setVisibility(on ? View.VISIBLE : View.GONE);
     }
 
+    static final String STOCK_NOTE = "Creality Scan Bridge default";
+    static final String BOOST_NOTE = "the scanner's rate closest to halfway between Stock and Max";
     static final String MAX_LINK = "needs a very fast and stable link (Wi-Fi 6E/7 or Gigabit Ethernet)";
     private TextView fpsTitle, fpsNote;
     private RadioGroup fpsGroup;
@@ -1147,23 +1160,23 @@ public final class MainActivity extends Activity {
         String[] label = new String[3];
         boolean[] offered = {true, c == null || c.boost > 0, c == null || c.max > 0};
         if (c == null) {
-            label[0] = "Stock: Creality Scan's own rate";
-            label[1] = "Boost";
+            label[0] = "Stock: " + STOCK_NOTE;
+            label[1] = "Boost: " + BOOST_NOTE;
             label[2] = "Max: " + MAX_LINK;
         } else {
-            label[0] = "Stock · " + (c.stock > 0 ? c.stock + " fps · ~" + c.mbps(c.stock) + " Mbit/s" : "Creality Scan's own rate");
-            label[1] = "Boost · " + c.boost + " fps · ~" + c.mbps(c.boost) + " Mbit/s";
+            label[0] = "Stock · " + (c.stock > 0 ? c.stock + " fps · ~" + c.mbps(c.stock) + " Mbit/s · " : "") + STOCK_NOTE;
+            label[1] = "Boost · " + c.boost + " fps · ~" + c.mbps(c.boost) + " Mbit/s · " + BOOST_NOTE;
             label[2] = "Max · " + c.max + " fps · ~" + c.mbps(c.max) + " Mbit/s · " + MAX_LINK;
         }
         boolean none = c != null && c.max == 0;
         // Creality Scan reads the rate list (0xFC1) when it connects, so a change while a PC is connected wouldn't
         // apply until it reconnects: lock it like the network choice.
         boolean locked = s.pcs > 0;
-        String note = c == null ? "Rates show once the scanner is connected and the bridge is running."
+        String note = c == null ? "Actual rates show once the scanner is connected and the bridge is running."
                 : none ? "This scanner already streams at its top rate."
                 : locked ? "Creality Scan is connected. Close it to change the frame rate."
                 : "Applies the next time Creality Scan connects. The bridge can keep running.";
-        fpsTitle.setText(locked ? "Scanner frame rate (close Creality Scan to change)" : "Scanner frame rate");
+        fpsTitle.setText(locked ? "Scanner frame-rate override (close Creality Scan to change)" : "Scanner frame-rate override");
         String key = saved + "|" + String.join("|", label) + "|" + offered[1] + offered[2] + "|" + note + "|" + locked;
         if (key.equals(fpsKey)) return;
         fpsKey = key;

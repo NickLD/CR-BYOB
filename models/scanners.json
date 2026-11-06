@@ -73,6 +73,8 @@
       "ir_jpeg_quality": 98,
       "imu": {"present": true, "hid_interface": 6},
       "bridge_fps": 15,
+      "scan_options": {"projection": ["infrared"], "scan_mode": ["face", "obj_small", "obj_medium", "obj_big", "human"], "accuracy": ["fast", "high"]},
+      "creality_scan_config": {"blue_light": {"support": false}, "infrared": {"face": {"fuse_modes": {"geo": {"accuracy": [true, true], "fov": [true, false], "support": true}, "marker": {"support": false}, "markerless": {"support": false}, "rgbd": {"accuracy": [true, true], "fov": [true, false], "support": true}}, "support": true}, "human": {"fuse_modes": {"geo": {"accuracy": [true, true], "fov": [true, false], "support": true}, "marker": {"support": false}, "markerless": {"support": false}, "rgbd": {"accuracy": [true, true], "fov": [true, false], "support": true}}, "support": true}, "obj_big": {"fuse_modes": {"geo": {"accuracy": [true, true], "fov": [true, false], "support": true}, "marker": {"accuracy": [false, true], "fov": [true, false], "support": true}, "markerless": {"support": false}, "rgbd": {"accuracy": [true, true], "fov": [true, false], "support": true}}, "support": true}, "obj_medium": {"fuse_modes": {"geo": {"accuracy": [true, true], "fov": [true, false], "support": true}, "marker": {"accuracy": [false, true], "fov": [true, false], "support": true}, "markerless": {"support": false}, "rgbd": {"accuracy": [true, true], "fov": [true, false], "support": true}}, "support": true}, "obj_small": {"fuse_modes": {"geo": {"accuracy": [true, true], "fov": [true, false], "support": true}, "marker": {"accuracy": [false, true], "fov": [true, false], "support": true}, "markerless": {"support": false}, "rgbd": {"accuracy": [true, true], "fov": [true, false], "support": true}}, "support": true}, "ref_rod": false, "remove_plane": true, "remove_turntable": true, "scan_type": [true, false, true], "support": true, "texture": [true, false]}, "pid": 1754},
       "notes": "MI_02 IR = IR/IR_LEFT, MI_00 Depth = DEPTH/IR_RIGHT, MI_04 RGB, MI_06 HID IMU (248-byte reports)."
     },
 
@@ -132,6 +134,7 @@
       "ir_pre_stream_props": [],
       "ir_jpeg_quality": 90,
       "imu": {"hid_interface": 4},
+      "scan_options": {"projection": ["infrared", "blue_light"], "scan_mode": ["face", "obj_small", "obj_medium", "obj_big", "human"], "accuracy": ["high"], "light_type": ["parallel", "cross", "single"], "fov": ["normal", "wide"]},
       "notes": "Line-laser class: no IR or DEPTH sensor; IR_LEFT and IR_RIGHT both come from infIndex 0, COLOR 2, HID 4 [O client]. That the two IR streams are the first and second VideoStreaming interface of VC 0 ([0,0]/[0,1]) is [I]; needs lsusb -v. cameraServer skips the 0x70/0x12 sets and uses JPEG q90 for this PID [O]. In the 'Laser Lines Big Fov Scan' / 'Laser Lines Fast Scan' work modes it streams native MJPG IR instead of a synthesized copy [O]."
     },
     "0x0C06": {
@@ -140,6 +143,7 @@
       "sdk_class": "SermoonS1Device",
       "advertise": {"ir": ["GREY"]},
       "ir_jpeg_quality": 98,
+      "scan_options": {"projection": ["infrared", "blue_light"], "scan_mode": ["face", "obj_small", "obj_medium", "obj_big", "human"], "accuracy": ["high"], "light_type": ["parallel", "cross", "single"], "fov": ["normal", "wide"]},
       "notes": "Line-laser layout like the X1 [O client; two-VS split I]. cameraServer: MJPG + RLE IR copies, no 0x70/0x12 sets [O]."
     },
     "0x0C0B": {
@@ -150,11 +154,13 @@
       "ir_synth": ["RLE"],
       "ir_pre_stream_props": [[112, 1], [18, 1]],
       "ir_jpeg_quality": 98,
+      "scan_options": {"projection": ["infrared", "blue_light"], "scan_mode": ["face", "obj_small", "obj_medium", "obj_big", "human"], "accuracy": ["high"], "light_type": ["parallel"]},
       "notes": "App name RAPTOR_PIKA. Line-laser layout [O client]. Not in the official bridge SDK; it has its own network mode (wireless interconnection), so a bridge is probably unnecessary. Client IR chain: TurboJpeg + BlockStdDev RLE [O]. Pre-stream props are cameraServer's generic default [I]."
     },
     "0x0C10": {
       "inherit": "0x0C0B",
       "name": "M1 Ultra",
+      "scan_options": {"projection": ["infrared", "blue_light"], "scan_mode": ["face", "obj_small", "obj_medium", "obj_big", "human"], "accuracy": ["high"], "light_type": ["parallel", "cross", "single"], "fov": ["normal", "wide"]},
       "notes": "Built by the client's Pika creator [O]; product unknown. Not in the official bridge SDK."
     },
     "0x0C08": {
@@ -164,11 +170,13 @@
       "sdk_class": "SermoonP1Device",
       "ir_synth": [],
       "ir_jpeg_quality": 98,
+      "scan_options": {"projection": ["infrared", "blue_light"], "scan_mode": ["face", "obj_small", "obj_medium", "obj_big", "human"], "accuracy": ["high"], "light_type": ["parallel", "cross", "single"], "fov": ["normal", "wide"]},
       "notes": "The client's bridge (combo) device rejects P1/P1S [O]; they connect over their own network mode instead. IR RLE is a different codec (BlockRle, 4x4, not decoded)."
     },
     "0x0C0D": {
       "inherit": "0x0C08",
       "name": "Sermoon P1 Lite",
+      "scan_options": {"projection": ["infrared", "blue_light"], "scan_mode": ["face", "obj_small", "obj_medium", "obj_big", "human"], "accuracy": ["fast", "high"], "light_type": ["parallel", "cross", "single"], "fov": ["normal", "wide"]},
       "notes": "App name SERMOON_P1S. See 0x0C08."
     },
 
@@ -182,6 +190,7 @@
       "advertise": {"ir": ["GREY"], "color": ["MJPG"], "depth": []},
       "ir_synth": ["MJPG"],
       "imu": {"hid_interface": 6},
+      "scan_options": {"projection": ["infrared"], "scan_mode": ["face", "obj_small", "obj_medium", "obj_big"], "accuracy": ["fast", "high"]},
       "notes": "Default port bytes = Otter layout, Avatar-like IR chain [O client]. The official bridge SDK knows the class, so it probably works there [I]. XML default depth is 1280x800@30 RLE from the device (flavour unknown), not advertised here."
     },
     "0x06A1": {

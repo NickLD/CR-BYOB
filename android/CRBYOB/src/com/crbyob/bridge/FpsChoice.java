@@ -30,7 +30,7 @@ final class FpsChoice {
     /**
      * irProfiles: the IR stream's UVC modes. stock: Creality Scan's own rate (0 = unknown). Max is offered when the
      * scanner has a faster mode than Stock (or Stock is unknown). Boost is offered only when Stock is known, and is the
-     * in-between rate closest to sqrt(stock * max): 20 for an Otter (15 -> 30).
+     * scanner's in-between rate closest to halfway between them (the lower one on a tie): 20 for an Otter (15 -> 30).
      */
     static FpsChoice of(List<UsbDesc.Profile> irProfiles, int stock) {
         int w = 0, h = 0;
@@ -44,7 +44,7 @@ final class FpsChoice {
         int max = stock <= 0 || top > stock ? top : 0;
         int boost = 0;
         if (stock > 0 && max > 0) {
-            double target = Math.sqrt((double) stock * max);
+            double target = (stock + max) / 2.0;
             for (int r : rates.subSet(stock, false, max, false))
                 if (boost == 0 || Math.abs(r - target) < Math.abs(boost - target)) boost = r;
         }

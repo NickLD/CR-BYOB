@@ -76,7 +76,7 @@ public class FpsFloorTest {
 
     @Test public void ferretBoostIsTheMiddleRate() {
         FpsChoice c = FpsChoice.of(OTTER_USB3, 10);     // Ferret: stock 10 behind a bridge
-        assertEquals(15, c.boost);                      // closest to sqrt(10 * 30) = 17.3
+        assertEquals(20, c.boost);                      // halfway between 10 and 30
         assertEquals(30, c.max);
     }
 

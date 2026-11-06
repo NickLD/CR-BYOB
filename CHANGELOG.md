@@ -8,30 +8,30 @@ Format: one `## [X.Y.Z] - YYYY-MM-DD` section per release (newest first), with `
 for people using the app. Collect changes under `## [Unreleased]` and rename it to the version and date
 when tagging. A release build fails if its version has no dated section here.
 
-## [Unreleased]
+## [0.2.0] - 2026-11-06
 
 ### Added
-- Scanner frame rate (experimental): Stock, Boost or Max in the Network card. Behind a bridge Creality Scan
-  asks for 15 fps from an Otter; Boost gets 20 and Max 30, worked out from the attached scanner's own modes.
-  Max needs a very fast and stable link (Wi-Fi 6E/7 or Gigabit Ethernet). Creality Scan reads it
-  when it connects, so the choice is locked while it's connected.
-- Mirror quality: tap the "Mirror … fps" pill on the viewer to set the frame rate and the 3D view's
-  resolution. "Adjust automatically" uses them as a ceiling: it lowers the resolution, then the frame rate,
-  when the mirror stutters, and raises them again once it's smooth.
-- The viewer's stats panel shows the bridge's link: Wi-Fi signal, link rate and band, or the Wi-Fi Direct
-  channel (Android reports no signal for a group owner's clients). The dashboard's Wi-Fi line adds the Wi-Fi
-  generation and the upload/download link rates.
+- Scanner frame-rate override (experimental), in the new Experimental card below Network: Stock, Boost or
+  Max. Behind a bridge Creality Scan asks an Otter for 15 fps; Boost gets 20 and Max 30, worked out from
+  the attached scanner's own modes. Max needs a very fast and stable link (Wi-Fi 6E/7 or Gigabit
+  Ethernet). Creality Scan reads it when it connects, so the choice is locked while it's connected.
+- Run a scan from the mirror viewer: set up a new scan (object, alignment, accuracy and more, as Creality
+  Scan offers for the scanner, with its own descriptions), change the settings during the preview
+  (Settings…), then Start, Pause, Finish, and Delete once paused. Delete replaces Cancel.
+- Fill light and exposure in the viewer: 💡 and AUTO/MAN buttons on the 3D view, with an IR exposure
+  slider. "Lighting…" also sets laser power and color exposure.
+- Creality Scan's messages show along the bottom of the 3D view, and its pop-ups show on the phone; your
+  answer goes back to the PC.
+- Mirror quality: tap the "Mirror … fps" pill to set the mirror's frame rate and 3D resolution.
+  "Adjust automatically" lowers them when the mirror stutters and raises them again once it's smooth.
+- The viewer's stats panel shows the bridge's link (Wi-Fi signal, link rate and band, or the Wi-Fi Direct
+  channel). The dashboard's Wi-Fi line adds the Wi-Fi generation and the link rates.
+- The CR-Scan Ferret Pro is now tested and supported, thanks to a device report.
 
-### Changed
-- The bridge keeps about a quarter second of frames per stream (was two frames), so short stalls on the
-  phone's network no longer drop frames or halve the IR rate.
-- A stream's dashboard badge turns amber only when frames are actually lost, not when a few go out late.
-- Stream quality is judged on the last 10 s of drops (was 30 s) and shown as drops per second. In the
-  viewer it reads "Stream: Good (0.0 drops/s)", colored, and the Wi-Fi line has signal bars instead.
-- The viewer's "Frame rate" is now labeled "PC scan rate" (it's Creality Scan's processing rate), and the
-  status line shows the rate each mirrored view arrives at.
-- The CR-Scan Ferret Pro is now tested and supported, thanks to a device report. The dashboard no longer
-  warns that its streams may be wrong.
+### Fixed
+- Short stalls on the phone's network no longer drop frames or halve the IR rate: the bridge keeps about
+  a quarter second of frames per stream (was two frames).
+- Bug fixes and improvements.
 
 ## [0.1.0] - 2026-11-05
 

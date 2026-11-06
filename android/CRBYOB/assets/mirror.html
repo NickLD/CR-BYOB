@@ -24,6 +24,24 @@
            font-size: 13px; pointer-events: none; text-align: center; padding: 0 12px; }
   #zoomlbl { position: absolute; right: 44px; top: 6px; padding: 2px 8px; border-radius: 8px; background: rgba(14,17,22,.7);
              font-size: 12px; color: #8B949E; pointer-events: none; display: none; }
+  /* Creality Scan's messages along the bottom of the 3D view (fixed spot: nothing else moves when they change) */
+  #notes { position: absolute; left: 8px; right: 40px; bottom: 10px; display: flex; flex-direction: column;
+           align-items: center; gap: 4px; pointer-events: none; z-index: 2; }
+  #notes.withbubbles { bottom: 68px; }          /* above the controls row, never over it */
+  #notes div { display: none; max-width: 100%; padding: 4px 10px; border-radius: 10px; background: rgba(14,17,22,.82);
+               font-size: 13px; font-weight: bold; color: #E6EDF3; text-align: center; }
+  /* quick controls: fill light, IR exposure auto/manual (+ slider when manual) */
+  #bubbles { position: absolute; left: 10px; bottom: 10px; display: none; gap: 10px; z-index: 3; }
+  .bubble { width: 46px; height: 46px; border-radius: 50%; background: rgba(14,17,22,.82); border: 2px solid #2A313C;
+            color: #E6EDF3; display: none; align-items: center; justify-content: center; font: bold 11px sans-serif; }
+  .bubble.on { background: #D29922; border-color: #D29922; color: #0E1116; }       /* fill light on */
+  .bubble.man { background: #58A6FF; border-color: #58A6FF; color: #0E1116; }     /* manual exposure */
+  #bLed { font-size: 20px; }
+  #expPanel { position: absolute; left: 124px; right: 40px; bottom: 14px; height: 38px; display: none; align-items: center;
+              gap: 8px; z-index: 3; padding: 0 10px; border-radius: 12px; background: rgba(14,17,22,.82); color: #8B949E;
+              font: bold 12px sans-serif; box-sizing: border-box; }
+  #expRange { flex: 1; min-width: 60px; accent-color: #58A6FF; }
+  #expVal { color: #E6EDF3; min-width: 34px; text-align: right; }
   /* distance bar like the phone app: top = too far, bottom = too close */
   #dist { position: absolute; right: 10px; top: 10%; bottom: 10%; width: 14px; border-radius: 7px; overflow: visible;
           display: none; pointer-events: none;
@@ -69,7 +87,11 @@
   <div id="big" class="slot"><video autoplay playsinline muted poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></video>
     <div class="pills"><div class="lbl"></div><div id="mfps" role="button" aria-label="Mirror frame rate"></div></div>
     <div class="empty">waiting for video</div><div id="zoomlbl"></div>
-    <div id="dist"><div id="handle"></div><div id="distlbl"></div></div></div>
+    <div id="dist"><div id="handle"></div><div id="distlbl"></div></div>
+    <div id="notes"><div id="nPersist"></div><div id="nToast"></div><div id="nLoading">Creality Scan is working…</div></div>
+    <div id="bubbles"><div id="bLed" class="bubble" role="button" aria-label="Fill light">💡</div>
+      <div id="bExp" class="bubble" role="button" aria-label="IR exposure auto or manual">AUTO</div></div>
+    <div id="expPanel"><span>IR</span><input id="expRange" type="range" min="1" max="1000" value="500"><b id="expVal">500</b></div></div>
   <div id="side">
   <div id="row">
     <div id="insetA" class="slot"><video autoplay playsinline muted poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></video><div class="lbl"></div><div class="empty">…</div></div>
@@ -137,6 +159,56 @@ function render() {
       pill.addEventListener(ev, e => e.stopPropagation()));
   pill.addEventListener('click', e => { e.stopPropagation(); try { A.mirrorFpsMenu(); } catch (x) { log('mfps: ' + x); } });
 })();
+// Creality Scan's notifications (from Java: text in its own words, level 2 warning / 3 error / 4 success).
+// slot: persist (the scan stage; until hidden), toast (6 s at most), loading.
+const NOTE_COLORS = {2: '#D29922', 3: '#F85149', 4: '#3FB950'};
+let toastTimer = null;
+window.setNote = function (slot, text, level) {
+  const el = $(slot === 'persist' ? 'nPersist' : slot === 'toast' ? 'nToast' : 'nLoading');
+  if (slot !== 'loading') { el.textContent = text || ''; el.style.color = NOTE_COLORS[level] || '#E6EDF3'; }
+  el.style.display = text ? 'block' : 'none';
+  if (slot === 'toast') { clearTimeout(toastTimer); if (text) toastTimer = setTimeout(() => { el.style.display = 'none'; }, 6000); }
+};
+
+// Quick controls over the 3D view, from Creality Scan's state: fill light, IR exposure auto/manual, and the
+// manual exposure slider. Shown only while a scan exists and only what the scanner reports.
+let expDragging = false;
+function renderControls() {
+  const status = num(st.ScanStatus);
+  const scan = status >= 1 && status <= 4;
+  const led = scan && (st.RgbFillLightSupport === true || st.RgbFillLightSupport === 'true');
+  const exp = scan && st.IrExpValue !== undefined;
+  $('bLed').style.display = led ? 'flex' : 'none';
+  $('bLed').classList.toggle('on', st.RgbFillLightOn === true || st.RgbFillLightOn === 'true');
+  const auto = !(st.IrExpAutoMode === false || st.IrExpAutoMode === 'false');
+  $('bExp').style.display = exp ? 'flex' : 'none';
+  $('bExp').textContent = auto ? 'AUTO' : 'MAN';
+  $('bExp').classList.toggle('man', !auto);
+  $('bubbles').style.display = led || exp ? 'flex' : 'none';
+  $('notes').classList.toggle('withbubbles', led || exp);
+  $('expPanel').style.display = exp && !auto ? 'flex' : 'none';
+  if (exp && !expDragging) {
+    const r = $('expRange');
+    r.min = num(st.IrExpMin) || 1; r.max = num(st.IrExpMax) || 1000; r.value = num(st.IrExpValue);
+    $('expVal').textContent = r.value;
+  }
+}
+(function () {
+  ['bubbles', 'expPanel'].forEach(id => ['touchstart', 'touchmove', 'touchend', 'pointerdown', 'mousedown', 'click']
+      .forEach(ev => $(id).addEventListener(ev, e => e.stopPropagation())));
+  $('bLed').addEventListener('click', () => {
+    const on = !(st.RgbFillLightOn === true || st.RgbFillLightOn === 'true');
+    rpcNotify('rgb.fillLight', [on]); st.RgbFillLightOn = on; renderControls();
+  });
+  $('bExp').addEventListener('click', () => {
+    const auto = !(st.IrExpAutoMode === false || st.IrExpAutoMode === 'false');
+    rpcNotify('ir.expSwitchAutoMode', [!auto]); st.IrExpAutoMode = !auto; renderControls();
+  });
+  const r = $('expRange');
+  r.addEventListener('input', () => { expDragging = true; $('expVal').textContent = r.value; });
+  r.addEventListener('change', () => { expDragging = false; rpcNotify('ir.expChange', [Number(r.value)]); st.IrExpValue = Number(r.value); });
+})();
+
 // called from Java after each stream.quality: setting (0 = Auto), the rate actually asked for, 3D resolution %
 window.setMirrorFps = function (auto, fps, w, h, degraded) {
   const pill = $('mfps');
@@ -162,11 +234,30 @@ function rpcSend(obj) {
   try { A.rpcOut(text); } catch (e) {}
   return true;
 }
+// Creality Scan disables Start while it asks "Save the current scan and start a new scan?" (after scanCreate) and
+// doesn't re-enable it when that dialog is cancelled (seen 2026-11-06): keep the button states from before.
+let buttonsBeforeCreate = null, statusBeforeCreate = null;
 window.rpcNotify = function (method, params) {
+  if (method === 'scanCreate') { buttonsBeforeCreate = st.ScanButtonStatus; statusBeforeCreate = num(st.ScanStatus); }
   const m = {jsonrpc: '2.0', method: method};
   if (params !== undefined && params !== null) m.params = params;
   return rpcSend(m);
 };
+
+// Log every stateSync key when its value changes (counters that change every frame excepted), so the scan
+// settings (ScanParams, AppliedScanParams, SupportedScanConfig), button states and exposure ranges are on record.
+const QUIET_KEYS = new Set(['FrameId', 'PointCount', 'MarkerCount', 'FrameRate', 'Temperature', 'FreeMemory',
+                            'StreamBitRate', 'DistanceAdvice']);
+let lastState = {};
+function logStateChanges(d) {
+  for (const k in d) {
+    if (QUIET_KEYS.has(k)) continue;
+    const v = JSON.stringify(d[k]);
+    if (lastState[k] === v) continue;
+    lastState[k] = v;
+    try { A.stateKey(k, v); } catch (e) {}
+  }
+}
 
 function onRpc(text) {
   let m; try { m = JSON.parse(text); } catch (e) { log('bad rpc ' + text); return; }
@@ -179,8 +270,15 @@ function onRpc(text) {
     return;
   }
   const p = Array.isArray(m.params) && m.params.length === 1 ? m.params[0] : m.params;
+  if (m.method === 'dialog' && p && p.IsVisible === false && p.DialogId === 'scanning_add_new_scan_dialog') {
+    if (p.ClickedButtonType === 2 && buttonsBeforeCreate && num(st.ScanStatus) === statusBeforeCreate) {
+      st.ScanButtonStatus = buttonsBeforeCreate;           // cancelled: Creality Scan doesn't restore them itself
+      renderState();
+    }
+    buttonsBeforeCreate = null;
+  }
   if (m.method === 'trackInfo' && p) { types[p.TrackID] = p.TextureType; log('trackInfo ' + p.TrackID + ' = ' + p.TextureType); render(); }
-  if (m.method === 'stateSync' && p && p.DicDatas) onStateSync(p.DicDatas);
+  if (m.method === 'stateSync' && p && p.DicDatas) { logStateChanges(p.DicDatas); onStateSync(p.DicDatas); }
   if (m.id !== undefined && m.method) rpcSend({jsonrpc: '2.0', id: m.id, error: {code: -32601, message: 'Method not found'}});
 }
 
@@ -281,6 +379,7 @@ function renderState() {
   if (out !== lastPcState) { lastPcState = out; try { A.pcState(out); } catch (e) {} }
 }
 setInterval(renderState, 1000);    // ages out the distance indicator
+setInterval(() => { try { renderControls(); } catch (e) {} }, 500);
 
 // ------------------------------------------------------------------ touch on the model view (phone doc §8.2)
 const big = $('big');
@@ -413,6 +512,7 @@ async function pollStats() {
 function newPc() {
   if (pc) try { pc.close(); } catch (e) {}
   pc = new RTCPeerConnection({iceServers: []});      // LAN only: host candidates
+  lastState = {};                                     // log the full state again for each connection
   pc.ontrack = ev => {
     const t = ev.track;
     streams[t.id] = new MediaStream([t]);
