@@ -21,6 +21,7 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
+import android.widget.RadioGroup;
 import android.widget.TextView;
 
 import org.json.JSONObject;
@@ -56,12 +57,12 @@ public final class MirrorActivity extends Activity implements MirrorSession.Ui {
     // bridge panel (fixed grid)
     private LinearLayout panelCard;
     private OrbView pOrb;
-    private BarsView pBars;
     private TextView pHero, pTotals, pLink, pScanner, pWarn, pDecim;
     private final TextView[] chipVal = new TextView[3];
     private final LinearLayout[] chipBox = new LinearLayout[3];
     // native scan stats (landscape right column, under the buttons)
     private LinearLayout statsBox, statsGrid;
+    private LinearLayout statsLink;
     private TextView statsTitle, statsDev;
     private org.json.JSONArray lastStats = new org.json.JSONArray();
     private String lastDev = "";
@@ -125,6 +126,7 @@ public final class MirrorActivity extends Activity implements MirrorSession.Ui {
         @Override
         public void run() {
             refreshPanel();
+            sampleLink();
             h.postDelayed(this, 1000);
         }
     };
@@ -238,6 +240,10 @@ public final class MirrorActivity extends Activity implements MirrorSession.Ui {
         statsGrid = new LinearLayout(this);
         statsGrid.setOrientation(LinearLayout.VERTICAL);
         statsBox.addView(statsGrid);
+        statsLink = new LinearLayout(this);        // the bridge's link, one full-width row per item
+        statsLink.setOrientation(LinearLayout.VERTICAL);
+        statsLink.setPadding(0, dp(6), 0, 0);
+        statsBox.addView(statsLink);
         statsDev = text(12, SUB, false);
         statsDev.setPadding(0, dp(4), 0, 0);
         statsBox.addView(statsDev);
@@ -284,6 +290,105 @@ public final class MirrorActivity extends Activity implements MirrorSession.Ui {
             return true;
         });
         m.show();
+    }
+
+    /**
+     * The page's "Mirror … fps" pill: frame rate and 3D view resolution asked of Creality Scan, in the app's own
+     * dialog style. The frame rate applies at once; a resolution change reconnects the mirror (sent only in init).
+     */
+    @Override
+    public void onMirrorFpsMenu() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(22), dp(4), dp(22), 0);
+        android.widget.Switch adapt = new android.widget.Switch(this);
+        adapt.setText("Adjust automatically");
+        adapt.setTextColor(TEXT);
+        adapt.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        adapt.setChecked(ses.adaptSetting());
+        adapt.setPadding(0, dp(8), 0, dp(2));
+        box.addView(adapt);
+        TextView now = text(12, SUB, false);
+        now.setSingleLine(false);
+        now.setMaxLines(4);
+        box.addView(now);
+        int[] fpsOpts = MirrorAuto.FPS, resOpts = MirrorAuto.RES;
+        String[] fpsLabels = new String[fpsOpts.length];
+        for (int i = 0; i < fpsOpts.length; i++) fpsLabels[i] = fpsOpts[i] + " fps";
+        String[] resLabels = new String[resOpts.length];
+        for (int i = 0; i < resOpts.length; i++) {
+            int[] m = ses.modelSize(resOpts[i]);
+            resLabels[i] = (resOpts[i] == 100 ? "Full" : resOpts[i] + "%") + " · " + m[0] + "×" + m[1];
+        }
+        TextView[] titles = new TextView[2];
+        RadioGroup fpsGroup = qualityGroup(box, "Frame rate", fpsLabels, indexOf(fpsOpts, ses.fpsSetting()), null, titles, 0);
+        RadioGroup resGroup = qualityGroup(box, "3D view resolution", resLabels, indexOf(resOpts, ses.resSetting()),
+                "Resolution changes reconnect the mirror for a second or two.", titles, 1);
+        Runnable relabel = () -> {
+            boolean on = adapt.isChecked();
+            titles[0].setText(on ? "Frame rate: up to" : "Frame rate");
+            titles[1].setText(on ? "3D view resolution: up to" : "3D view resolution");
+            now.setText(on ? "Lowers the resolution, then the frame rate, when the mirror stutters, and raises them "
+                    + "again up to your choices once it's smooth. Now " + ses.visibleFps() + " fps · " + ses.visibleRes() + "%."
+                    : "Uses exactly your choices.");
+        };
+        adapt.setOnCheckedChangeListener((v, on) -> relabel.run());
+        relabel.run();
+        TextView note = text(13, SUB, false);
+        note.setSingleLine(false);
+        note.setMaxLines(3);
+        note.setText("Only the mirror changes. The scanner streams to the PC are not affected.");
+        note.setPadding(0, dp(12), 0, dp(4));
+        box.addView(note);
+        android.widget.ScrollView sv = new android.widget.ScrollView(this);
+        sv.addView(box);
+        AlertDialog d = new AlertDialog.Builder(this).setTitle("Mirror quality").setView(sv)
+                .setPositiveButton("Apply", (x, w) -> ses.setMirrorQuality(adapt.isChecked(),
+                        fpsOpts[checkedIndex(fpsGroup)], resOpts[checkedIndex(resGroup)]))
+                .setNegativeButton("Cancel", null).create();
+        Widgets.showStyled(d);
+    }
+
+    /** A titled group of radio buttons in the dashboard's style (white text, blue buttons), with a hint line. */
+    private RadioGroup qualityGroup(LinearLayout box, String title, String[] labels, int checked, String hint,
+                                    TextView[] titles, int slot) {
+        TextView t = text(14, SUB, true);
+        t.setText(title);
+        titles[slot] = t;
+        t.setPadding(0, dp(12), 0, dp(2));
+        box.addView(t);
+        RadioGroup g = new RadioGroup(this);
+        for (int i = 0; i < labels.length; i++) {
+            android.widget.RadioButton rb = new android.widget.RadioButton(this);
+            rb.setId(View.generateViewId());
+            rb.setTag(i);
+            rb.setText(labels[i]);
+            rb.setTextColor(TEXT);
+            rb.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+            rb.setButtonTintList(android.content.res.ColorStateList.valueOf(BLUE));
+            rb.setPadding(dp(4), dp(6), 0, dp(6));
+            g.addView(rb);
+            if (i == checked) rb.setChecked(true);
+        }
+        box.addView(g);
+        if (hint != null) {
+            TextView hn = text(12, SUB, false);
+            hn.setSingleLine(false);
+            hn.setMaxLines(3);
+            hn.setText(hint);
+            box.addView(hn);
+        }
+        return g;
+    }
+
+    private static int checkedIndex(RadioGroup g) {
+        View v = g.findViewById(g.getCheckedRadioButtonId());
+        return v != null && v.getTag() instanceof Integer ? (Integer) v.getTag() : 0;
+    }
+
+    private static int indexOf(int[] a, int v) {
+        for (int i = 0; i < a.length; i++) if (a[i] == v) return i;
+        return 0;
     }
 
     private void closeSession() {
@@ -469,12 +574,61 @@ public final class MirrorActivity extends Activity implements MirrorSession.Ui {
     }
 
     /** Native stats block (landscape): balanced 2-column grid of label / value, then DeviceName_FW. */
+    private java.util.List<String[]> linkCells = new java.util.ArrayList<>();
+    private String linkKey = "";
+
+    /**
+     * Once a second: the link the bridge streams on (its dashboard snapshot), or this phone's own Wi-Fi when the
+     * bridge isn't running here, as cells appended to the stats panel.
+     */
+    private void sampleLink() {
+        Bridge b = BridgeService.current();
+        Dash.Snap s = b != null ? b.dash.snap : null;
+        String net = s != null ? s.advertise : "";
+        if (s == null) {
+            s = new Dash.Snap();
+            Dash.sampleWifi(this, s);
+        }
+        java.util.List<String[]> cells = "local".equals(net) ? new java.util.ArrayList<>() : Dash.linkStats(s, net);
+        StringBuilder k = new StringBuilder();
+        for (String[] c : cells) k.append(c[0]).append('=').append(c[1]).append('|');
+        if (k.toString().equals(linkKey)) return;
+        linkKey = k.toString();
+        linkCells = cells;
+        ses.pageLink(cells);
+        refreshStats();
+    }
+
     private void refreshStats() {
         if (statsBox == null) return;
         statsTitle.setText(scanLabel.isEmpty() ? "Waiting for Creality Scan state…" : scanLabel);
         statsTitle.setVisibility(landscape ? View.GONE : View.VISIBLE);
         statsGrid.removeAllViews();
-        int n = lastStats.length();
+        org.json.JSONArray all = lastStats;
+        statsLink.removeAllViews();
+        for (String[] c : linkCells) {
+            LinearLayout row = new LinearLayout(this);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            if (c.length > 2) {                              // Wi-Fi signal: the dashboard's bars
+                int lv = Integer.parseInt(c[2]);
+                BarsView bars = new BarsView(this);
+                bars.set(lv, Dash.barsColor(lv));
+                LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(dp(18), dp(12));
+                bl.rightMargin = dp(6);
+                row.addView(bars, bl);
+            }
+            TextView t = text(13, SUB, false);
+            android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder(c[0] + " ");
+            int st = sb.length();
+            sb.append(c[1]);
+            sb.setSpan(new android.text.style.ForegroundColorSpan(TEXT), st, sb.length(), 0);
+            sb.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), st, sb.length(), 0);
+            t.setText(sb);
+            row.addView(t);
+            statsLink.addView(row);
+        }
+        statsLink.setVisibility(linkCells.isEmpty() ? View.GONE : View.VISIBLE);
+        int n = all.length();
         int cols = landscape ? 3 : 2;
         for (int i = 0; i < n; i += cols) {
             LinearLayout row = new LinearLayout(this);
@@ -483,7 +637,7 @@ public final class MirrorActivity extends Activity implements MirrorSession.Ui {
                 LinearLayout cell = new LinearLayout(this);
                 cell.setOrientation(LinearLayout.VERTICAL);
                 if (k < n) {
-                    org.json.JSONArray it = lastStats.optJSONArray(k);
+                    org.json.JSONArray it = all.optJSONArray(k);
                     TextView l = text(10, SUB, false);
                     l.setText(it != null ? it.optString(0) : "");
                     TextView v = text(14, TEXT, true);
@@ -716,11 +870,8 @@ public final class MirrorActivity extends Activity implements MirrorSession.Ui {
         LinearLayout r3b = new LinearLayout(this);      // link quality on its own line so the totals never truncate
         r3b.setGravity(Gravity.CENTER_VERTICAL);
         r3b.setPadding(0, dp(2), 0, 0);
-        pBars = new BarsView(this);
-        r3b.addView(pBars, new LinearLayout.LayoutParams(dp(20), dp(13)));
-        pLink = text(12, SUB, false);
+        pLink = text(12, SUB, false);        // "Stream: Good (0.2 drops/s)", the word in the quality color
         pLink.setMaxLines(1);
-        pLink.setPadding(dp(5), 0, 0, 0);
         r3b.addView(pLink, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         c.addView(r3b);
         pScanner = text(12, SUB, false);
@@ -764,7 +915,7 @@ public final class MirrorActivity extends Activity implements MirrorSession.Ui {
             for (int i = 0; i < 3; i++) chipVal[i].setText("—");
             pTotals.setText("Start it on the dashboard");
             pLink.setText("");
-            pBars.set(0, GREY);
+            pLink.setVisibility(View.GONE);
             pScanner.setText("");
             pScanner.setVisibility(View.GONE);       // empty lines take no height
             pWarn.setVisibility(View.GONE);
@@ -789,10 +940,19 @@ public final class MirrorActivity extends Activity implements MirrorSession.Ui {
         if (dec) pDecim.setText("IR at " + (ir.k == 2 ? "½" : "⅓") + " rate" + Dash.recoverLabel(s.irRecoverMs, ir.k)
                 .replace(" in ", " rate in ").replace("trying full", "trying full rate").replace("trying ½", "trying ½ rate"));
         pTotals.setText(String.format(Locale.US, "%.0f Mbit/s · %.1f GB", s.totalMbps, s.totalBytes / 1e9));
-        pBars.set(Math.max(0, s.linkScore), scoreColor(s.linkScore));
-        String link = s.linkScore >= 0 ? s.linkWord : "";
-        if (s.p2pWanted && s.p2pFreq > 0) link += (link.isEmpty() ? "" : " · ") + "ch " + Dash.channel(s.p2pFreq);
+        android.text.SpannableStringBuilder link = new android.text.SpannableStringBuilder();
+        if (s.linkScore >= 0) {
+            link.append("Stream: ");
+            int st = link.length();
+            link.append(s.linkWord);
+            link.setSpan(new android.text.style.ForegroundColorSpan(scoreColor(s.linkScore)), st, link.length(), 0);
+            link.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), st, link.length(), 0);
+            link.append(String.format(Locale.US, " (%.1f drops/s)", s.linkDropsPerSec));
+        }
+        if (s.p2pWanted && s.p2pFreq > 0)
+            link.append(link.length() == 0 ? "" : " · ").append("ch ").append(String.valueOf(Dash.channel(s.p2pFreq)));
         pLink.setText(link);
+        pLink.setVisibility(link.length() == 0 ? View.GONE : View.VISIBLE);   // no blank row before the first score
         String sc = s.scanner ? s.scannerModel + " · fw " + s.scannerFw + " · " + (s.usbSuper ? "USB 3" : "USB 2") : "Scanner: " + s.scannerState;
         if (s.battery >= 0) sc += " · " + s.battery + "%" + (s.powered ? "" : " battery");
         pScanner.setText(sc);

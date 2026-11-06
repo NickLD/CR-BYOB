@@ -36,6 +36,7 @@ final class Dash {
         boolean active;
         float fpsSent, fpsCap, mbps;
         int k = 1, fpsReq;
+        long lost;                              // frames dropped from the capture queue since the last sample
         String peer, profile;
         final float[] hist = new float[HIST];   // sent fps (Hz for the IMU), oldest first
     }
@@ -58,16 +59,20 @@ final class Dash {
         final float[] totalHist = new float[HIST];
         int linkScore = -1;
         String linkWord = "No stream yet", linkDetail = "Estimated from delivery once streaming starts";
+        double linkDropsPerSec;         // capture-queue drops per second over the last 10 s
         boolean staConnected;
         String staSsid;
         String modelName, modelStatus;      // scanners.json entry of the attached scanner
         int staFreq, staRssi, staLink, staBars;
+        int staTx, staRx, staStd;       // Tx/Rx link rate (Mbit/s, -1 unknown), Wi-Fi generation (7 = 802.11be, 0 unknown)
         boolean p2pWanted;
         String p2pState, p2pSsid, p2pPass;
         int p2pFreq, p2pClients;
         List<String> p2pIps = new ArrayList<>();
         String advertise = "";          // network discovery is answered on now
         String advertiseSaved = "";     // the user's choice ("" = automatic)
+        String fpsMode = FpsChoice.STOCK;  // scanner frame rate: stock | boost | max
+        FpsChoice fpsChoice;            // the attached scanner's rates, null while no scanner is open
         boolean advertiseDown;          // the network locked at Start has gone away
         String ethName, ethIp, lanIp;
         String ethNoIp;          // wired adapter with link up but no IPv4 (DHCP not done / failed)
@@ -171,6 +176,11 @@ final class Dash {
         }
     }
 
+    /** Color of the Wi-Fi signal bars (dashboard and mirror viewer). */
+    static int barsColor(int bars) {
+        return bars >= 3 ? Widgets.GREEN : bars == 2 ? Widgets.AMBER : Widgets.RED;
+    }
+
     private static int bars(int rssi) {
         if (rssi >= -55) return 4;
         if (rssi >= -62) return 3;
@@ -181,6 +191,27 @@ final class Dash {
 
     static int channel(int f) {
         return P2pGroup.channelOf(f);
+    }
+
+    /**
+     * Link cells for the mirror viewer's stats panel, {label, value}, for the network the bridge streams on
+     * ("wifi" | "p2p" | "eth"; "" = this phone's Wi-Fi, the bridge is off). Android has no link rate for Ethernet
+     * (sysfs is closed to apps) and no per-client signal for a Wi-Fi Direct group owner.
+     */
+    static List<String[]> linkStats(Snap s, String net) {
+        List<String[]> out = new ArrayList<>();
+        if (("wifi".equals(net) || net.isEmpty()) && s.staConnected) {
+            out.add(new String[]{"Wi-Fi signal", s.staRssi + " dBm", String.valueOf(s.staBars)});   // [2] = signal bars
+            String up = s.staTx > 0 ? s.staTx + "" : s.staLink > 0 ? s.staLink + "" : "?";
+            out.add(new String[]{"Link rate", s.staRx > 0 ? "↑" + up + " ↓" + s.staRx + " Mbit/s" : up + " Mbit/s"});
+            out.add(new String[]{"Band", (s.staStd > 0 ? "Wi-Fi " + s.staStd + " · " : "") + band(s.staFreq) + " ch " + channel(s.staFreq)});
+        } else if ("p2p".equals(net)) {
+            out.add(new String[]{"Wi-Fi Direct", s.p2pFreq > 0 ? band(s.p2pFreq) + " ch " + channel(s.p2pFreq) : "starting"});
+            out.add(new String[]{"Signal", "n/a (group owner)"});
+        } else if ("eth".equals(net)) {
+            out.add(new String[]{"Network", "Ethernet (wired)"});
+        }
+        return out;
     }
 
     static String band(int f) {
@@ -217,6 +248,12 @@ final class Dash {
             s.staRssi = wi.getRssi();
             s.staLink = wi.getLinkSpeed();
             s.staBars = bars(s.staRssi);
+            s.staTx = android.os.Build.VERSION.SDK_INT >= 29 ? wi.getTxLinkSpeedMbps() : s.staLink;
+            s.staRx = android.os.Build.VERSION.SDK_INT >= 29 ? wi.getRxLinkSpeedMbps() : -1;
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                int std = wi.getWifiStandard();      // ScanResult.WIFI_STANDARD_*: 4 = 11n, 5 = 11ac, 6 = 11ax, 8 = 11be
+                s.staStd = std == 8 ? 7 : std == 6 ? 6 : std == 5 ? 5 : std == 4 ? 4 : 0;
+            }
         }
 
     }
@@ -270,6 +307,7 @@ final class Dash {
             st.fpsSent = (float) ((f - p[0]) / dt);
             st.mbps = (float) ((by - p[1]) * 8 / dt / 1e6);
             st.fpsCap = (float) ((c - p[2]) / dt);
+            st.lost = d - p[3];
             st.active = ss.active > 0;
             st.k = st.active && i < 2 ? ss.k : 1;
             st.fpsReq = ss.fps;
@@ -337,25 +375,26 @@ final class Dash {
             long sent = 0, capd = 0, drops = 0;
             int n = 0;
             int m = 0;
-            for (java.util.Iterator<long[]> it = window.descendingIterator(); it.hasNext() && m < 30; m++) {
+            for (java.util.Iterator<long[]> it = window.descendingIterator(); it.hasNext() && m < 10; m++) {
                 long[] w = it.next();
                 if (n < 5) {            // delivery ratio: last 5 s, so recovery shows quickly
                     sent += w[0];
                     capd += w[1];
                     n++;
                 }
-                drops += w[2];          // queue drops: last 30 s
+                drops += w[2];          // queue drops: last 10 s, the window for every drop rate shown
             }
             double r = capd > 0 ? (double) sent / capd : 1.0;
-            double dpm = drops * 60.0 / Math.max(1, m);
+            double dps = (double) drops / Math.max(1, m);
             int score;
-            if (maxK == 1) score = r >= 0.97 && dpm < 5 ? 4 : r >= 0.85 ? 3 : r >= 0.6 ? 2 : 1;
+            if (maxK == 1) score = r >= 0.97 && dps <= 0.1 ? 4 : r >= 0.85 ? 3 : r >= 0.6 ? 2 : 1;   // Excellent: <= 1 drop in 10 s
             else if (maxK == 2) score = r >= 0.4 ? 2 : 1;
             else score = 1;
             s.linkScore = score;
             s.linkWord = new String[]{"No signal", "Poor", "Marginal", "Good", "Excellent"}[score];
-            s.linkDetail = String.format(Locale.US, "Estimated from delivery: %d%% of captured frames sent, %.0f drops/min, %s",
-                    Math.round(r * 100), dpm, maxK == 1 ? "full rate" : maxK == 2 ? "IR at half rate" : "IR at one-third rate");
+            s.linkDropsPerSec = dps;
+            s.linkDetail = String.format(Locale.US, "Estimated from delivery: %d%% of captured frames sent, %.1f drops/s (last 10 s), %s",
+                    Math.round(r * 100), dps, maxK == 1 ? "full rate" : maxK == 2 ? "IR at half rate" : "IR at one-third rate");
         }
 
         sampleWifi(b.ctx, s);
@@ -370,6 +409,8 @@ final class Dash {
         s.p2pClients = g.clientCount;
         s.advertise = b.lockedAdvertise != null ? b.lockedAdvertise : b.effectiveAdvertise();
         s.advertiseSaved = b.savedAdvertise();
+        s.fpsMode = b.fpsMode();
+        s.fpsChoice = b.fpsChoice();
         boolean[] up = Bridge.networksUp();
         s.advertiseDown = b.running && !"local".equals(s.advertise)    // "This phone only" needs no network
                 && ("p2p".equals(s.advertise) ? !up[0] && !s.p2pWanted : "eth".equals(s.advertise) ? !up[1] : !up[2]);
@@ -569,7 +610,7 @@ final class Dash {
     private static Stream copy(Stream a) {
         Stream c = new Stream();
         c.name = a.name; c.active = a.active; c.fpsSent = a.fpsSent; c.fpsCap = a.fpsCap; c.mbps = a.mbps;
-        c.k = a.k; c.fpsReq = a.fpsReq; c.peer = a.peer; c.profile = a.profile;
+        c.k = a.k; c.lost = a.lost; c.fpsReq = a.fpsReq; c.peer = a.peer; c.profile = a.profile;
         System.arraycopy(a.hist, 0, c.hist, 0, HIST);
         return c;
     }

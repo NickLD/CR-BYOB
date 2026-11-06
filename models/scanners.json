@@ -72,6 +72,7 @@
       "ir_pre_stream_props": [[112, 1], [18, 1]],
       "ir_jpeg_quality": 98,
       "imu": {"present": true, "hid_interface": 6},
+      "bridge_fps": 15,
       "notes": "MI_02 IR = IR/IR_LEFT, MI_00 Depth = DEPTH/IR_RIGHT, MI_04 RGB, MI_06 HID IMU (248-byte reports)."
     },
 
@@ -174,6 +175,7 @@
     "0x069C": {
       "name": "CR-Scan Ferret",
       "status": "unverified",
+      "bridge_fps": 10,
       "sdk_class": "FerretUvcDevice",
       "interfaces": {"ir": 2, "ir_l": 2, "ir_r": 0, "depth": 0, "color": 4},
       "fc1_order": ["ir_l", "ir_r", "color", "ir"],

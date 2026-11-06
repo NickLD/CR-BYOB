@@ -461,7 +461,8 @@ final class RtspServer {
                     if (!bridge.testPattern) throw new java.io.IOException("scanner not attached");
                     cap = new TestPattern(p);
                 } else {
-                    cap = new UvcCapture(o, vs, p);
+                    // stream_map.json "capture_queue": frames of slack per stream (default UvcCapture.queueDepth)
+                    cap = new UvcCapture(o, vs, p, bridge.streamMap().optInt("capture_queue", 0));
                 }
                 cap.start();
                 String prof = p.fourcc + p.width + "x" + p.height + "@" + p.fps;
@@ -478,6 +479,7 @@ final class RtspServer {
                 stat.peer = conn.getInetAddress().getHostAddress();
                 stat.profile = prof.trim();
                 stat.fps = p.fps;
+                if (isIr && bridge.fpsFloor() == 0) bridge.noteStockFps(p.fps);   // what Creality Scan asks for unboosted
                 long capSeen = 0, dropSeen = 0;
 
                 byte[] hdr = new byte[34];
@@ -486,6 +488,9 @@ final class RtspServer {
                 long n = 0, sent = 0, t0 = System.nanoTime();
                 double idle = 0;
                 long lastReport = System.currentTimeMillis(), skipped = 0;
+                // per stream_stats window: time inside socket writes (high = the PC or link is slow to take data)
+                // and the longest wait between frames (long with fast writes = this thread didn't get to run)
+                long wrNs = 0, wrMaxNs = 0, gapMaxNs = 0, winT0 = System.nanoTime(), lastTake = 0;
                 while (streaming) {
                     UvcCapture.Frame f = cap.take(500);
                     if (f == null) {
@@ -495,6 +500,9 @@ final class RtspServer {
                         continue;
                     }
                     idle = 0;
+                    long tTake = System.nanoTime();
+                    if (lastTake != 0) gapMaxNs = Math.max(gapMaxNs, tTake - lastTake);
+                    lastTake = tTake;
                     long cf = cap.framesCaptured(), cd = cap.framesDroppedQueue();
                     stat.captured.addAndGet(cf - capSeen);
                     stat.drops.addAndGet(cd - dropSeen);
@@ -538,6 +546,7 @@ final class RtspServer {
                         }
                         int total = hdrLen + dlen;
                         int rtpTs = (int) (tsUs * 9 / 100);
+                        long w0 = System.nanoTime();
                         for (int off = 0; off < total; off += RTP_CHUNK) {
                             int chunk = Math.min(RTP_CHUNK, total - off);
                             boolean last = off + RTP_CHUNK >= total;
@@ -563,6 +572,9 @@ final class RtspServer {
                             if (left > 0) System.arraycopy(data, pos - hdrLen, pkt, dst, left);
                             send(pkt, 0, 16 + chunk);
                         }
+                        long wd = System.nanoTime() - w0;
+                        wrNs += wd;
+                        wrMaxNs = Math.max(wrMaxNs, wd);
                         n++;
                         sent += total;
                         stat.sentFrames.incrementAndGet();
@@ -579,7 +591,11 @@ final class RtspServer {
                                 "captured", cap.framesCaptured(), "queue_drops", cap.framesDroppedQueue(),
                                 "skipped", skipped, "ir_k", isIr ? (gate ? bridge.irGate.k() : 1) : 0,
                                 "enc_kb", es != null && es[0] > 0 ? (Object) (es[1] / es[0] / 1024) : null,
-                                "enc_ms", es != null && es[0] > 0 ? (Object) (Math.round(es[2] / 1e5 / es[0]) / 10.0) : null);
+                                "enc_ms", es != null && es[0] > 0 ? (Object) (Math.round(es[2] / 1e5 / es[0]) / 10.0) : null,
+                                "write_pct", Math.round(wrNs * 100.0 / Math.max(1, System.nanoTime() - winT0)),
+                                "write_max_ms", wrMaxNs / 1_000_000, "gap_max_ms", gapMaxNs / 1_000_000);
+                        wrNs = wrMaxNs = gapMaxNs = 0;
+                        winT0 = System.nanoTime();
                         statusText = "[" + stype + " " + prof.trim() + " " + Math.round(n / dt * 10) / 10.0 + "fps]";
                     }
                 }

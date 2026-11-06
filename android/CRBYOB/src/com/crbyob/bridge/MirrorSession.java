@@ -47,6 +47,8 @@ final class MirrorSession {
         void onButtons(JSONObject buttons, boolean known, boolean resume, boolean pcDriven);
         void onScanLabel(String label);
         void onScanStats(JSONArray stats, String dev);
+        /** The mirror frame-rate pill on the page was tapped. */
+        void onMirrorFpsMenu();
     }
 
     private static MirrorSession instance;
@@ -74,6 +76,7 @@ final class MirrorSession {
     private volatile String host;
     private volatile int port = SIGNAL_PORT;
     private volatile boolean connected, connecting, rpcReady, visible, lowQuality;
+    volatile int requestedFps;      // the frame rate last asked of Creality Scan
     volatile boolean decoding;
     private String lastTitle = "Not connected", lastSub = "", lastStatsTitle, lastStatsLine;
     private JSONObject lastButtons;
@@ -134,6 +137,8 @@ final class MirrorSession {
                 public void onPageFinished(WebView v, String url) {
                     pageReady = true;
                     v.evaluateJavascript("mirrorStart(" + JSONObject.quote(uid) + ")", null);
+                    // the quality pill from the start, so it can be set before Creality Scan connects
+                    v.evaluateJavascript(pillJs(visibleFps()), null);
                     if (pendingConnect != null) {
                         String p = pendingConnect;
                         pendingConnect = null;
@@ -179,6 +184,20 @@ final class MirrorSession {
         } catch (Exception e) {
             return "<html><body style='color:#fff;background:#000'>mirror.html missing: " + e + "</body></html>";
         }
+    }
+
+    /** The bridge's link cells, {label, value}, for the page's portrait info block. */
+    void pageLink(java.util.List<String[]> cells) {
+        JSONArray a = new JSONArray();
+        for (String[] c : cells) {
+            JSONArray x = new JSONArray().put(c[0]).put(c[1]);
+            if (c.length > 2) {                                  // signal bars: level and CSS color
+                int lv = Integer.parseInt(c[2]);
+                x.put(lv).put(String.format("#%06X", Dash.barsColor(lv) & 0xFFFFFF));
+            }
+            a.put(x);
+        }
+        js("setLink(" + a + ")");
     }
 
     private void js(String code) {
@@ -290,20 +309,117 @@ final class MirrorSession {
         });
     }
 
+    /** "Adjust automatically" (prefs "mirror_adapt", on by default): see MirrorAuto. */
+    boolean adaptSetting() { return prefs.getBoolean("mirror_adapt", true); }
+
+    /** Frame rate: exactly this, or the most Auto uses (prefs "mirror_fps"; an old 0 = Auto reads as 30). */
+    int fpsSetting() {
+        int f = prefs.getInt("mirror_fps", 30);
+        for (int v : MirrorAuto.FPS) if (v == f) return f;
+        return 30;
+    }
+
+    /** 3D view resolution in percent: exactly this, or the most Auto uses (prefs "mirror_res"). */
+    int resSetting() {
+        int r = prefs.getInt("mirror_res", 100);
+        for (int v : MirrorAuto.RES) if (v == r) return r;
+        return 100;
+    }
+
+    /**
+     * The 3D view's texture size asked of Creality Scan in init: the screen's long side (at most 1280) at 4:3, times
+     * the resolution in percent. It's the one size Creality Scan honors, and only at init: it ignores
+     * StreamQualityMessage.ScaleFactor (at 0.5 and 0.25 every track kept its size), so a change reconnects.
+     */
+    int[] modelSize(int res) {
+        android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
+        ((android.view.WindowManager) app.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay().getRealMetrics(dm);
+        int full = Math.min(1280, Math.max(dm.widthPixels, dm.heightPixels));
+        int w = Math.max(160, full * res / 100 / 8 * 8);
+        return new int[]{w, w * 3 / 4 / 8 * 8};
+    }
+
+    private final MirrorAuto auto = new MirrorAuto();
+    private int initRes;                 // the resolution sent in this connection's init
+
+    private void ensureAuto() {
+        if (auto.fps == 0) auto.reset(fpsSetting(), resSetting(), System.currentTimeMillis());
+    }
+
+    /** The frame rate asked of Creality Scan while the viewer is visible. */
+    int visibleFps() {
+        if (!adaptSetting()) return fpsSetting();
+        ensureAuto();
+        return auto.fps;
+    }
+
+    /** The 3D resolution in effect (percent). */
+    int visibleRes() {
+        if (!adaptSetting()) return resSetting();
+        ensureAuto();
+        return auto.res;
+    }
+
+    /**
+     * The viewer's quality pill: the frame rate and 3D size in effect, "auto" when adjusting, and degraded (amber)
+     * when Auto has stepped either below the chosen ceiling.
+     */
+    private String pillJs(int fps) {
+        int res = visibleRes();
+        int[] m = modelSize(res);
+        boolean degraded = adaptSetting() && (fps < fpsSetting() || res < resSetting());
+        return "setMirrorFps(" + adaptSetting() + "," + fps + "," + m[0] + "," + m[1] + "," + degraded + ")";
+    }
+
+    /** Every stats interval (~5 s): worstFreezeMs is the longest any one view froze in it. */
+    private void autoAdjust(long worstFreezeMs, long now) {
+        if (!adaptSetting() || !visible || lowQuality || !rpcReady) {
+            auto.pause(now);
+            return;
+        }
+        ensureAuto();
+        int f0 = auto.fps, r0 = auto.res;
+        int what = auto.step(worstFreezeMs, now);
+        if (what == MirrorAuto.NONE) return;
+        BLog.log("mirror_auto", "fps", f0 + "->" + auto.fps, "res", r0 + "->" + auto.res);
+        String hp = hostPort();
+        if (what == MirrorAuto.RES_CHANGED && hp != null) connect(hp, "auto resolution");   // init carries it
+        else applyQuality(true);
+    }
+
+    /** Save the viewer's settings and apply them now; Auto starts over at the new ceiling. */
+    void setMirrorQuality(boolean adapt, int fps, int res) {
+        prefs.edit().putBoolean("mirror_adapt", adapt).putInt("mirror_fps", fps).putInt("mirror_res", res).apply();
+        h.post(() -> {
+            auto.reset(fpsSetting(), resSetting(), System.currentTimeMillis());
+            String hp = hostPort();
+            if (visibleRes() != initRes && hp != null && (connected || connecting)) connect(hp, "resolution");
+            else applyQuality(true);
+        });
+    }
+
     private void applyQuality() {
+        applyQuality(false);
+    }
+
+    private void applyQuality(boolean force) {
         if (!rpcReady) return;
         boolean wantLow = !visible;
-        if (wantLow == lowQuality) return;
+        if (wantLow == lowQuality && !force) return;
         lowQuality = wantLow;
         // StreamQualityMessage {TextureType, ScaleFactor, FrameRate, QualityFactor};
-        // normal = the PC prefab's VideoStreamSender defaults (scale 1.0, 30 fps).
+        // the PC prefab's VideoStreamSender defaults are scale 1.0, 30 fps.
         double scale = wantLow ? 0.25 : 1.0, q = wantLow ? 0.5 : 1.0;
-        int fps = wantLow ? 2 : 30;
+        int fps = wantLow ? 2 : visibleFps();
         for (int t : new int[]{1, 2, 4}) {
             js(String.format(Locale.US, "rpcNotify('stream.quality',{TextureType:%d,ScaleFactor:%.2f,FrameRate:%d,QualityFactor:%.2f})",
                     t, scale, fps, q));
         }
-        BLog.log("mirror_quality", "mode", wantLow ? "low (hidden)" : "normal (visible)", "scale", scale, "fps", fps);
+        requestedFps = fps;
+        if (!wantLow) js(pillJs(fps));       // the viewer's pill
+        BLog.log("mirror_quality", "mode", wantLow ? "low (hidden)" : "normal (visible)", "fps", fps,
+                "res", wantLow ? null : (Object) visibleRes(),
+                "setting", wantLow ? null : (adaptSetting() ? "auto up to " : "fixed ") + fpsSetting() + " fps " + resSetting() + "%");
     }
 
     // ------------------------------------------------------------------ TCP signaling
@@ -479,7 +595,7 @@ final class MirrorSession {
         @JavascriptInterface
         public void status(String state, String text) {
             BLog.log("mirror_state", "state", state, "text", text);
-            if ("init".equals(state)) h.post(() -> { rpcReady = true; applyQuality(); });
+            if ("init".equals(state)) h.post(() -> { rpcReady = true; applyQuality(true); });   // always state our settings
             if ("closed".equals(state) || "error".equals(state)) decoding = false;
             String title;
             switch (state) {
@@ -542,6 +658,51 @@ final class MirrorSession {
             BLog.log("mirror_rpc_in", "msg", text.length() > 300 ? text.substring(0, 300) : text);
         }
 
+        private final java.util.Map<String, JSONObject> prevVideo = new java.util.HashMap<>();
+        private final java.util.Map<String, Long> prevVideoAt = new java.util.HashMap<>();
+
+        /**
+         * Per-track mirror health over the last log interval. Frames received but not decoded point at the phone,
+         * packets lost / NACKs / jitter at the link, and a low received rate with neither at the PC's encoder.
+         */
+        private long logVideo(JSONObject o, long now) {
+            String id = o.optString("track");
+            JSONObject p = prevVideo.put(id, o);
+            Long pt = prevVideoAt.put(id, now);
+            if (p == null || pt == null || now <= pt) return 0;
+            long freezeMs = Math.round((o.optDouble("freezeS") - p.optDouble("freezeS")) * 1000);
+            double dt = (now - pt) / 1000.0;
+            long jbOut = o.optLong("jbOut") - p.optLong("jbOut");
+            long dec = o.optLong("decoded") - p.optLong("decoded");
+            int t = o.optInt("type");
+            BLog.log("mirror_video", "track", t == 1 ? "RGB" : t == 2 ? "IR" : t == 4 ? "Model" : id,
+                    "size", o.optInt("w") + "x" + o.optInt("h"), "decoder", o.optString("decoder"),
+                    "recv_fps", Math.round((o.optLong("recv") - p.optLong("recv")) / dt * 10) / 10.0,
+                    "dec_fps", Math.round(dec / dt * 10) / 10.0,
+                    "dropped", o.optLong("dropped") - p.optLong("dropped"),
+                    "pkts", o.optLong("pkts") - p.optLong("pkts"), "lost", o.optLong("lost") - p.optLong("lost"),
+                    "nack", o.optLong("nack") - p.optLong("nack"), "pli", o.optLong("pli") - p.optLong("pli"),
+                    "freezes", o.optLong("freezes") - p.optLong("freezes"),
+                    "freeze_ms", freezeMs,
+                    "jitter_ms", Math.round(o.optDouble("jitter") * 1000),
+                    "jb_ms", jbOut > 0 ? Math.round((o.optDouble("jbDelay") - p.optDouble("jbDelay")) / jbOut * 1000) : null,
+                    "decode_ms", dec > 0 ? Math.round((o.optDouble("decodeS") - p.optDouble("decodeS")) / dec * 10000) / 10.0 : null);
+            return freezeMs;
+        }
+
+        /** "w,h" for init's CustomModelTextureSize. */
+        @JavascriptInterface
+        public String modelSize() {
+            initRes = visibleRes();
+            int[] m = MirrorSession.this.modelSize(initRes);
+            return m[0] + "," + m[1];
+        }
+
+        @JavascriptInterface
+        public void mirrorFpsMenu() {
+            h.post(() -> { if (ui != null) ui.onMirrorFpsMenu(); });
+        }
+
         @JavascriptInterface
         public void stats(String json) {
             try {
@@ -552,11 +713,9 @@ final class MirrorSession {
                 for (int i = 0; i < a.length(); i++) {
                     JSONObject o = a.getJSONObject(i);
                     int t = o.optInt("type");
-                    String n = t == 1 ? "RGB" : t == 2 ? "IR" : t == 4 ? "Model" : "track" + (i + 1);
-                    if (sb.length() > 0) sb.append(" · ");
-                    sb.append(n).append(' ').append(o.optString("codec")).append(' ')
-                            .append(String.format(Locale.US, "%.0f fps", o.optDouble("fps"))).append(' ')
-                            .append(o.optInt("w")).append('x').append(o.optInt("h"));
+                    String n = t == 1 ? "RGB" : t == 2 ? "IR" : t == 4 ? "3D" : "track" + (i + 1);
+                    sb.append(sb.length() > 0 ? " · " : "Mirror: ").append(n).append(' ')
+                            .append(String.format(Locale.US, "%.0f", o.optDouble("fps")));
                     bytes += o.optLong("bytes");
                     if (o.optDouble("fps") > 0.5) live++;
                 }
@@ -567,7 +726,12 @@ final class MirrorSession {
                 if (now - kbpsLogAt > 5000) {
                     kbpsLogAt = now;
                     BLog.log("mirror_bitrate", "kbps", Math.round(kbps), "visible", visible, "low_quality", lowQuality, "tracks", a.length());
+                    long worst = 0;
+                    for (int i = 0; i < a.length(); i++) worst = Math.max(worst, logVideo(a.getJSONObject(i), now));
+                    final long worstMs = worst, at = now;
+                    h.post(() -> autoAdjust(worstMs, at));
                 }
+                if (sb.length() > 0) sb.append(" fps");      // frames arriving per second, per view
                 final String line = (host != null ? host + " · " : "") + (sb.length() > 0 ? sb : "no video yet")
                         + String.format(Locale.US, " · %.1f Mbit/s", kbps / 1000);
                 final int n = live;

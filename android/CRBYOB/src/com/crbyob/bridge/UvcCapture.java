@@ -24,8 +24,16 @@ public final class UvcCapture implements Otter.Sink, FrameSource {
         Frame(int cap) { data = new byte[cap]; }
     }
 
-    private static final int POOL = 4;           // assembling + consumer + 2 queued
-    private static final int MAX_QUEUED = 2;
+    private final int maxQueued;                 // finished frames waiting for the sender; pool = this + assembling + consumer
+
+    /**
+     * Frames the sender may fall behind before the oldest is dropped: about 250 ms of video (4 frames at 15 fps,
+     * 8 at 30). A phone's USB Ethernet transmit path can pause for 50-250 ms. Measured on a Pixel 10 at 30 fps,
+     * 133 ms of slack still dropped frames and set off decimation; 266 ms dropped none.
+     */
+    static int queueDepth(int fps) {
+        return Math.max(2, (fps + 3) / 4);
+    }
     private static final int URB_BUDGET = 4 << 20; // usbfs_memory_mb is 16 MB on stock kernels; 3 streams share it
 
     private final Otter o;
@@ -52,10 +60,12 @@ public final class UvcCapture implements Otter.Sink, FrameSource {
     private long urbs, bytes, frames, dropErr, dropSize, dropQueue, dropSync, badHdr, queueFail;
     private long statT0, lastStat;
 
-    public UvcCapture(Otter o, UsbDesc.Vs vs, UsbDesc.Profile p) {
+    /** queued: frames the sender may fall behind (0 = {@link #queueDepth} for the profile's fps). */
+    public UvcCapture(Otter o, UsbDesc.Vs vs, UsbDesc.Profile p, int queued) {
         this.o = o;
         this.vs = vs;
         this.p = p;
+        this.maxQueued = queued > 0 ? queued : queueDepth(p.fps);
         this.tag = "VS" + vs.iface + " " + p.fourcc.trim() + p.width + "x" + p.height + "@" + p.fps;
         this.expected = p.fourcc.equals("GREY") ? p.width * p.height : 0;
     }
@@ -75,7 +85,7 @@ public final class UvcCapture implements Otter.Sink, FrameSource {
 
         if (expected > 0) frameCap = expected + 64 * 1024;   // a bit of slack so oversize frames are detectable
         else frameCap = Math.max(Math.max(p.maxFrameBuf, maxFrameSize), p.width * p.height * 2);
-        for (int i = 0; i < POOL; i++) free.add(new Frame(frameCap));
+        for (int i = 0; i < maxQueued + 2; i++) free.add(new Frame(frameCap));
 
         statT0 = lastStat = System.nanoTime();
         synchronized (this) {
@@ -94,7 +104,7 @@ public final class UvcCapture implements Otter.Sink, FrameSource {
         if (outstanding == 0) throw new IOException("could not queue any bulk request");
         BLog.log("uvc_start", "stream", tag, "fmt", p.formatIndex, "frm", p.frameIndex, "interval", p.interval,
                 "max_payload", maxPayload, "max_frame", maxFrameSize, "xfer", xferSize, "urbs", outstanding,
-                "frame_cap", frameCap);
+                "frame_cap", frameCap, "queue", maxQueued);
     }
 
     private int maxFrameSize;
@@ -257,7 +267,7 @@ public final class UvcCapture implements Otter.Sink, FrameSource {
         }
         frames++;
         synchronized (q) {
-            while (filled.size() >= MAX_QUEUED) {
+            while (filled.size() >= maxQueued) {
                 free.addLast(filled.pollFirst());
                 dropQueue++;
             }

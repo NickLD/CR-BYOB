@@ -13,6 +13,11 @@
   #big { width: 100%; aspect-ratio: 4 / 3; flex: none; touch-action: none; }
   #row { display: flex; gap: 8px; padding: 8px 8px 0 8px; flex: none; }
   #row .slot { flex: 1; aspect-ratio: 16 / 10; border: 2px solid #2A313C; border-radius: 10px; }
+  .pills { position: absolute; left: 8px; top: 6px; display: flex; gap: 6px; align-items: center; z-index: 3; }
+  .pills .lbl { position: static; }
+  #mfps { padding: 2px 8px; border-radius: 8px; border: 1px solid #2A313C; background: rgba(14,17,22,.7);
+          color: #E6EDF3; font: bold 12px sans-serif; display: none; }
+  #mfps.degraded { color: #D29922; border-color: #D29922; }
   .lbl { position: absolute; left: 8px; top: 6px; padding: 2px 8px; border-radius: 8px; background: rgba(14,17,22,.7);
          font-size: 12px; font-weight: bold; color: #8B949E; pointer-events: none; }
   .empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #6E7681;
@@ -49,6 +54,10 @@
   }
   #scanstate { font-size: 20px; font-weight: bold; }
   #nums { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 15px; }
+  #link { margin-top: 6px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; font-size: 14px; color: #8B949E; }
+  #link b { color: #E6EDF3; }
+  #link .bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; margin-right: 6px; }
+  #link .bars i { width: 3px; border-radius: 1px; background: #2A313C; }
   #nums span b { color: #E6EDF3; } #nums span { color: #8B949E; }
   #nums i { font-style: normal; } #nums .ls { display: none; }
   #dev { margin-top: 8px; font-size: 13px; color: #8B949E; }
@@ -57,15 +66,16 @@
 </head>
 <body>
 <div id="wrap">
-  <div id="big" class="slot"><video autoplay playsinline muted></video><div class="lbl"></div>
+  <div id="big" class="slot"><video autoplay playsinline muted poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></video>
+    <div class="pills"><div class="lbl"></div><div id="mfps" role="button" aria-label="Mirror frame rate"></div></div>
     <div class="empty">waiting for video</div><div id="zoomlbl"></div>
     <div id="dist"><div id="handle"></div><div id="distlbl"></div></div></div>
   <div id="side">
   <div id="row">
-    <div id="insetA" class="slot"><video autoplay playsinline muted></video><div class="lbl"></div><div class="empty">…</div></div>
-    <div id="insetB" class="slot"><video autoplay playsinline muted></video><div class="lbl"></div><div class="empty">…</div></div>
+    <div id="insetA" class="slot"><video autoplay playsinline muted poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></video><div class="lbl"></div><div class="empty">…</div></div>
+    <div id="insetB" class="slot"><video autoplay playsinline muted poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></video><div class="lbl"></div><div class="empty">…</div></div>
   </div>
-  <div id="info"><div id="scanstate"></div><div id="nums"></div><div id="dev"></div><div id="hint"></div></div>
+  <div id="info"><div id="scanstate"></div><div id="nums"></div><div id="link"></div><div id="dev"></div><div id="hint"></div></div>
   </div>
 </div>
 <script>
@@ -117,6 +127,32 @@ function render() {
 ['insetA', 'insetB'].forEach(slot => $(slot).addEventListener('click', () => {
   const t = layout[slot]; layout[slot] = layout.big; layout.big = t; resetView(); render();
 }));
+
+// Mirror frame rate pill: a tap opens the native picker (MirrorActivity; this WebView can't show <select> popups,
+// it's created with the app context so it outlives the activity). Its touches must not reach the big view's
+// pinch/drag and model-touch handlers.
+(function () {
+  const pill = $('mfps');
+  ['touchstart', 'touchmove', 'touchend', 'pointerdown', 'mousedown'].forEach(ev =>
+      pill.addEventListener(ev, e => e.stopPropagation()));
+  pill.addEventListener('click', e => { e.stopPropagation(); try { A.mirrorFpsMenu(); } catch (x) { log('mfps: ' + x); } });
+})();
+// called from Java after each stream.quality: setting (0 = Auto), the rate actually asked for, 3D resolution %
+window.setMirrorFps = function (auto, fps, w, h, degraded) {
+  const pill = $('mfps');
+  pill.textContent = 'Mirror ' + fps + ' fps · ' + w + '×' + h + (auto ? ' · auto' : '') + ' ▾';
+  pill.classList.toggle('degraded', !!degraded);     // Auto has stepped below the chosen ceiling
+  pill.style.display = 'block';
+}
+
+// The bridge's link (MirrorActivity.sampleLink): [[label, value], ...], shown under the scan stats in portrait.
+const esc = t => String(t).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+window.setLink = function (cells) {
+  // c = [label, value] or [label, value, signal bars 0-4, color]
+  const bars = c => c.length > 3 ? '<span class="bars">' + [1, 2, 3, 4].map(i => '<i style="height:' + (i * 25) + '%;'
+      + (i <= c[2] ? 'background:' + c[3] : '') + '"></i>').join('') + '</span>' : '';
+  $('link').innerHTML = (cells || []).map(c => '<span>' + bars(c) + esc(c[0]) + ' <b>' + esc(c[1]) + '</b></span>').join('');
+};
 
 // ------------------------------------------------------------------ JSON-RPC
 function rpcSend(obj) {
@@ -204,7 +240,8 @@ function renderState() {
   if (num(st.PointCount) >= 1) add('Points', 'Points', st.PointCount, v => num(v).toLocaleString('en-US'));
   if (num(st.MarkerCount) >= 1) add('Markers', 'Markers', st.MarkerCount, v => num(v));
   if (num(st.FrameId) >= 1) add('Frames', 'Frames', st.FrameId, v => num(v));
-  if (num(st.FrameRate) > 0) add('Frame Rate', '', st.FrameRate, v => Math.round(num(v)) + ' fps');
+  // FrameRate is Creality Scan's own figure: scanner frames per second it processes on the PC (not the mirror's rate)
+  if (num(st.FrameRate) > 0) add('PC scan rate', 'PC', st.FrameRate, v => Math.round(num(v)) + ' fps');
   if (num(st.Temperature) > 0) add('Temperature', '', st.Temperature, v => num(v).toFixed(0) + '℃');
   $('nums').innerHTML = parts.join('');
   $('dev').textContent = st.DeviceName && st.ScannerFirmwareVersion ? st.DeviceName + '_' + st.ScannerFirmwareVersion : (st.DeviceName || '');
@@ -237,7 +274,7 @@ function renderState() {
   if (num(st.PointCount) >= 1) stats.push(['Points', num(st.PointCount).toLocaleString('en-US')]);
   if (num(st.MarkerCount) >= 1) stats.push(['Markers', String(num(st.MarkerCount))]);
   if (num(st.FrameId) >= 1) stats.push(['Frames', String(num(st.FrameId))]);
-  if (num(st.FrameRate) > 0) stats.push(['Frame rate', Math.round(num(st.FrameRate)) + ' fps']);
+  if (num(st.FrameRate) > 0) stats.push(['PC scan rate', Math.round(num(st.FrameRate)) + ' fps']);
   if (num(st.Temperature) > 0) stats.push(['Temperature', num(st.Temperature).toFixed(0) + '℃']);
   const out = JSON.stringify({status: ss, buttons: b, resume: ss === 4, pcDriven: haveBtn, known: ss >= 0 || haveBtn, zoom: zoomOk,
                               label: title || '', stats: stats, dev: $('dev').textContent, hint: $('hint').textContent});
@@ -339,6 +376,8 @@ function setupChannel(ch) {
     // 4:3 rather than 16:9: the landscape model pane is nearly square, the portrait one is full-width (less letterboxing
     // in both). The size is fixed for the session (init is sent once), so it is a compromise for both orientations.
     var mh = Math.round(mw * 3 / 4);
+    try { const ms = String(A.modelSize()).split(',').map(Number); if (ms[0] > 0 && ms[1] > 0) { mw = ms[0]; mh = ms[1]; } }
+    catch (e) { log('modelSize: ' + e); }      // the viewer's resolution setting (MirrorSession.modelSize)
     rpcSend({jsonrpc: '2.0', method: 'init', id: rpcId++, params: {DicDatas: {CustomModelTextureSize: [mw, mh]},
         Version: '1.4.3', Platform: 2, ScannerPid: 0, Uid: uid}});
     clearInterval(hb);
@@ -358,7 +397,13 @@ async function pollStats() {
       if (r.type === 'inbound-rtp' && r.kind === 'video') {
         out.push({track: r.trackIdentifier || '', codec: (codecs[r.codecId] || '').replace('video/', ''),
                   fps: r.framesPerSecond || 0, decoded: r.framesDecoded || 0, w: r.frameWidth || 0, h: r.frameHeight || 0,
-                  type: types[r.trackIdentifier] || 0, bytes: r.bytesReceived || 0});
+                  type: types[r.trackIdentifier] || 0, bytes: r.bytesReceived || 0,
+                  // cumulative counters for the mirror_video log: lost/late on the link vs dropped on the phone
+                  recv: r.framesReceived || 0, dropped: r.framesDropped || 0, lost: r.packetsLost || 0,
+                  pkts: r.packetsReceived || 0, nack: r.nackCount || 0, pli: r.pliCount || 0,
+                  freezes: r.freezeCount || 0, freezeS: r.totalFreezesDuration || 0, jitter: r.jitter || 0,
+                  jbDelay: r.jitterBufferDelay || 0, jbOut: r.jitterBufferEmittedCount || 0,
+                  decodeS: r.totalDecodeTime || 0, decoder: r.decoderImplementation || ''});
       }
     });
     A.stats(JSON.stringify(out));
