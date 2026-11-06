@@ -1,14 +1,15 @@
 # Phone compatibility
 
-How each tested phone performs on each connection. All results are with a **CR-Scan Otter** on the phone's
-USB 3 port, the only scanner tested so far.
+How each tested phone performs on each connection. Results are with a **CR-Scan Otter** on the phone's USB 3
+port unless the phone's section names another scanner.
 
 | Phone | Android | Ethernet | Wi-Fi | Wi-Fi Direct | This phone only (Local Mobile App Scanning) | Reported by |
 |---|---|:---:|:---:|:---:|:---:|---|
 | [Google Pixel 10 Pro XL](#google-pixel-10-pro-xl) | 16 | ✅ | ✅ | ✅ | ✅ | [@NickLD](https://github.com/NickLD) |
+| [Google Pixel 6](#google-pixel-6) | 17 | — | ✅ | ✅ | — | [@Xalies](https://github.com/Xalies) |
 | [Google Pixel 5](#google-pixel-5) | 14 | ✅ | 🟡 | 🟡 | ⚠️ | [@NickLD](https://github.com/NickLD) |
 
-✅ Full performance &nbsp;·&nbsp; 🟡 Works, with limits &nbsp;·&nbsp; ⚠️ Not recommended
+✅ Full performance &nbsp;·&nbsp; 🟡 Works, with limits &nbsp;·&nbsp; ⚠️ Not recommended &nbsp;·&nbsp; — Not tested
 
 At full rate the Otter's three video streams need about **265 Mbit/s** between the phone and the PC, so the
 phone's network hardware matters as much as its processor. See
@@ -28,6 +29,19 @@ Android 16 · Reported by [@NickLD](https://github.com/NickLD)
 
 **Full performance on every connection**: Ethernet, Wi-Fi, Wi-Fi Direct and This phone only.
 It carries the full ~265 Mbit/s on Wi-Fi Direct, and on Wi-Fi when the phone is close to the access point.
+
+## Google Pixel 6
+
+Android 17 · CR-Scan Ferret Pro (fw 1.2.7) · Reported by [@Xalies](https://github.com/Xalies) ([#2](https://github.com/NickLD/CR-BYOB/issues/2))
+
+| Connection | Result |
+|---|---|
+| Ethernet | — Not tested |
+| Wi-Fi | ✅ Preview and a full scan, mirror viewer on. |
+| Wi-Fi Direct | ✅ Preview and a full scan, mirror viewer on. |
+| This phone only (Local Mobile App Scanning) | — Not tested |
+
+Tested with Creality Scan 4.3.3 on Windows. This was the first report for a scanner other than the Otter.
 
 ## Google Pixel 5
 

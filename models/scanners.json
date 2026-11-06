@@ -12,7 +12,8 @@
     "names using auto_interfaces. V4L2 fourccs are 4 chars, space padded.",
     "status: verified (tested end to end) | partial | unverified (from RE only, never run) | unsupported (the app",
     "won't use it behind a bridge) | unknown. Evidence tags in notes: [O] observed in code, [I] inferred, [?] unknown.",
-    "Only the CR-Scan Otter entry is verified on hardware; the others come from static analysis and are untested."
+    "Only the CR-Scan Otter and CR-Scan Ferret Pro entries are verified on hardware; the others come from static",
+    "analysis and are untested."
   ],
 
   "stream_ports": {"ir": 8556, "ir_l": 8556, "ir_r": 8557, "depth": 8554, "color": 8888},
@@ -184,7 +185,8 @@
     "0x06A1": {
       "inherit": "0x069C",
       "name": "CR-Scan Ferret Pro",
-      "notes": "Same class as the Ferret. It has its own Wi-Fi handle that speaks the Scan Bridge protocol [O client], so it may not need a bridge."
+      "status": "verified",
+      "notes": "Verified on fw 1.2.7: preview and a full scan over Wi-Fi and Wi-Fi Direct (device report, GitHub issue #2). Same class as the Ferret. It has its own Wi-Fi handle that speaks the Scan Bridge protocol [O client], so it may not need a bridge."
     }
   }
 }
