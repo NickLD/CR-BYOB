@@ -263,6 +263,7 @@ public final class MainActivity extends Activity {
         root.addView(linkCard, root.indexOfChild(streamsCard));
         buildSession(root);
         buildNetwork(root);
+        buildExperimental(root);
         buildEvents(root);
         buildFooter(root);
         setContentView(scroll);
@@ -320,7 +321,7 @@ public final class MainActivity extends Activity {
         c.addView(mirrorBtn, ml);
         autoSwitch = new android.widget.Switch(this);
         autoSwitch.setText("Auto-start screen mirroring when “Mobile connection” is opened in Creality Scan\n"
-                + "Creality Scan mirrors to one phone at a time. Turn off to mirror on another device instead.");
+                + "Creality Scan mirrors to one phone at a time. Turn off if you want to mirror from the CrealityScan mobile app.");
         autoSwitch.setTextColor(SUB);
         autoSwitch.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         autoSwitch.setChecked(MirrorSession.get(this).autoEnabled());
@@ -717,6 +718,40 @@ public final class MainActivity extends Activity {
 
     }
 
+    /** Experimental: settings that go beyond what Creality Scan does with its own Scan Bridge. */
+    private void buildExperimental(LinearLayout root) {
+        LinearLayout c = card(root, "🧪 Experimental");
+        TextView intro = text(13, SUB, false);
+        intro.setText("Experimental features, may be buggy.");
+        intro.setPadding(0, 0, 0, dp(4));
+        c.addView(intro);
+
+        // Scanner frame rate: Stock / Boost / Max, resolved against the attached scanner (FpsChoice)
+        fpsTitle = label("Scanner frame-rate override");
+        fpsTitle.setPadding(0, dp(8), 0, dp(2));
+        c.addView(fpsTitle);
+        fpsGroup = new RadioGroup(this);
+        for (String mode : new String[]{FpsChoice.STOCK, FpsChoice.BOOST, FpsChoice.MAX}) {
+            RadioButton rb = new RadioButton(this);
+            rb.setId(View.generateViewId());
+            rb.setTag(mode);
+            rb.setTextColor(TEXT);
+            rb.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+            rb.setButtonTintList(ColorStateList.valueOf(BLUE));
+            rb.setPadding(dp(4), dp(6), 0, dp(6));
+            fpsGroup.addView(rb);
+        }
+        fpsGroup.setOnCheckedChangeListener((g, id) -> {
+            if (fpsUpdating || id == View.NO_ID) return;
+            View rb = g.findViewById(id);
+            if (rb != null && rb.getTag() != null) setFpsMode((String) rb.getTag());
+        });
+        c.addView(fpsGroup);
+        fpsNote = text(13, SUB, false);
+        c.addView(fpsNote);
+
+    }
+
     private void buildEditor() {
         p2pEditor = new LinearLayout(this);
         p2pEditor.setOrientation(LinearLayout.VERTICAL);
@@ -760,13 +795,13 @@ public final class MainActivity extends Activity {
     }
 
     /** Merge one key into files/stream_map.json while the bridge is stopped. */
-    private void putStreamMapOffline(String key, String value) {
+    private void putStreamMapOffline(String key, Object value) {
         try {
             java.io.File f = new java.io.File(getFilesDir(), "stream_map.json");
             org.json.JSONObject j = new org.json.JSONObject();
             if (f.exists()) j = new org.json.JSONObject(new String(java.nio.file.Files.readAllBytes(f.toPath()),
                     java.nio.charset.StandardCharsets.UTF_8));
-            j.put(key, value);
+            if (value == null) j.remove(key); else j.put(key, value);
             java.nio.file.Files.write(f.toPath(), j.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
         } catch (Exception e) {
             Toast.makeText(this, "Could not save: " + e.getMessage(), Toast.LENGTH_SHORT).show();
@@ -871,9 +906,14 @@ public final class MainActivity extends Activity {
         // Ko-fi button: GitHub builds only (null in the Play flavor).
         View donate = Donate.footerButton(this);
         if (donate != null) {
+            TextView ask = text(13, SUB, false);
+            ask.setText("Avoided buying a Scan Bridge? Say thanks with a donation.");
+            ask.setGravity(Gravity.CENTER_HORIZONTAL);
+            ask.setPadding(0, dp(8), 0, 0);
+            root.addView(ask, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(30));
             lp.gravity = Gravity.CENTER_HORIZONTAL;
-            lp.setMargins(0, dp(8), 0, dp(12));
+            lp.setMargins(0, dp(6), 0, dp(12));
             root.addView(donate, lp);
         }
     }
@@ -1020,6 +1060,14 @@ public final class MainActivity extends Activity {
             if (i.hasExtra("update_repo")) Updates.setRepoOverride(this, i.getStringExtra("update_repo"));
             if (i.getBooleanExtra("update_check", false)) Updates.checkNow(this);
             if (autoSwitch != null) autoSwitch.setChecked(getSharedPreferences("bridge", MODE_PRIVATE).getBoolean("mirror_auto", true));
+            // --es fps_mode stock|boost|max; --ei fps_floor 20 sets any floor (wins over the mode, 0 removes it)
+            if (i.hasExtra("fps_mode")) setFpsMode(i.getStringExtra("fps_mode"));
+            if (i.hasExtra("fps_floor")) {
+                int fps = i.getIntExtra("fps_floor", 0);
+                Bridge b = BridgeService.current();
+                if (b != null) new Thread(() -> b.putStreamMap("fps_floor", fps > 0 ? fps : null), "fps_floor").start();
+                else putStreamMapOffline("fps_floor", fps > 0 ? fps : null);
+            }
         }
         if (i.getBooleanExtra("show_session_stats", false) && BridgeService.current() == null
                 && SessionStats.cur.stopMs == 0) SessionStats.cur.stopMs = SessionStats.cur.startMs;
@@ -1082,6 +1130,83 @@ public final class MainActivity extends Activity {
         v.setVisibility(on ? View.VISIBLE : View.GONE);
     }
 
+    static final String STOCK_NOTE = "Creality Scan Bridge default";
+    static final String BOOST_NOTE = "the scanner's rate closest to halfway between Stock and Max";
+    static final String MAX_LINK = "needs a very fast and stable link (Wi-Fi 6E/7 or Gigabit Ethernet)";
+    private TextView fpsTitle, fpsNote;
+    private RadioGroup fpsGroup;
+    private boolean fpsUpdating;
+    private String fpsKey = "";
+
+    /**
+     * Saves the scanner frame-rate mode (stream_map.json "fps_mode") and drops any test "fps_floor" so the choice
+     * wins. Creality Scan picks it up on its next connection, even while the bridge runs.
+     */
+    private void setFpsMode(String mode) {
+        String m = FpsChoice.normalize(mode);
+        BLog.log("fps_mode_set", "mode", m, "bridge_running", BridgeService.current() != null);
+        Object v = FpsChoice.STOCK.equals(m) ? null : m;
+        Bridge b = BridgeService.current();
+        if (b != null) new Thread(() -> { b.putStreamMap("fps_floor", null); b.putStreamMap("fps_mode", v); }, "fps_mode").start();
+        else { putStreamMapOffline("fps_floor", null); putStreamMapOffline("fps_mode", v); }
+        fpsKey = "";
+        h.postDelayed(this::refresh, 150);
+    }
+
+    /** Labels with the attached scanner's rates, and the saved mode checked; rebuilt only when something changes. */
+    private void refreshFps(Dash.Snap s) {
+        FpsChoice c = s.fpsChoice;
+        String saved = s.fpsMode;
+        String[] label = new String[3];
+        boolean[] offered = {true, c == null || c.boost > 0, c == null || c.max > 0};
+        if (c == null) {
+            label[0] = "Stock: " + STOCK_NOTE;
+            label[1] = "Boost: " + BOOST_NOTE;
+            label[2] = "Max: " + MAX_LINK;
+        } else {
+            label[0] = "Stock · " + (c.stock > 0 ? c.stock + " fps · ~" + c.mbps(c.stock) + " Mbit/s · " : "") + STOCK_NOTE;
+            label[1] = "Boost · " + c.boost + " fps · ~" + c.mbps(c.boost) + " Mbit/s · " + BOOST_NOTE;
+            label[2] = "Max · " + c.max + " fps · ~" + c.mbps(c.max) + " Mbit/s · " + MAX_LINK;
+        }
+        boolean none = c != null && c.max == 0;
+        // Creality Scan reads the rate list (0xFC1) when it connects, so a change while a PC is connected wouldn't
+        // apply until it reconnects: lock it like the network choice.
+        boolean locked = s.pcs > 0;
+        String note = c == null ? "Actual rates show once the scanner is connected and the bridge is running."
+                : none ? "This scanner already streams at its top rate."
+                : locked ? "Creality Scan is connected. Close it to change the frame rate."
+                : "Applies the next time Creality Scan connects. The bridge can keep running.";
+        fpsTitle.setText(locked ? "Scanner frame-rate override (close Creality Scan to change)" : "Scanner frame-rate override");
+        String key = saved + "|" + String.join("|", label) + "|" + offered[1] + offered[2] + "|" + note + "|" + locked;
+        if (key.equals(fpsKey)) return;
+        fpsKey = key;
+        fpsNote.setText(note);
+        // a mode this scanner doesn't offer runs as Stock (Bridge.fpsFloor), so show it that way
+        String effective = FpsChoice.BOOST.equals(saved) && offered[1] || FpsChoice.MAX.equals(saved) && offered[2]
+                ? saved : FpsChoice.STOCK;
+        fpsUpdating = true;
+        for (int i = 0; i < 3; i++) {
+            RadioButton rb = (RadioButton) fpsGroup.getChildAt(i);
+            rb.setText(label[i]);
+            show(rb, offered[i]);
+            rb.setEnabled(!locked);
+            rb.setAlpha(locked && !rb.getTag().equals(effective) ? 0.4f : 1f);
+            if (rb.getTag().equals(effective)) rb.setChecked(true);
+        }
+        fpsUpdating = false;
+    }
+
+    /** stream_map.json "fps_mode" read directly (the bridge isn't running). */
+    private String savedFpsMode() {
+        try {
+            java.io.File f = new java.io.File(getFilesDir(), "stream_map.json");
+            if (f.exists()) return FpsChoice.normalize(new org.json.JSONObject(new String(java.nio.file.Files.readAllBytes(
+                    f.toPath()), java.nio.charset.StandardCharsets.UTF_8)).optString("fps_mode", FpsChoice.STOCK));
+        } catch (Exception ignored) {
+        }
+        return FpsChoice.STOCK;
+    }
+
     /** stream_map.json "advertise" read directly (the bridge isn't running); "" = automatic. */
     private String savedChoice() {
         try {
@@ -1108,6 +1233,7 @@ public final class MainActivity extends Activity {
         Dash.sampleWifi(this, s);
         Dash.sampleInterfaces(s);
         s.advertiseSaved = savedChoice();
+        s.fpsMode = savedFpsMode();
         s.p2pWanted = getSharedPreferences("bridge", MODE_PRIVATE).getBoolean("p2p", false);
         s.advertise = Bridge.resolveAdvertise(s.advertiseSaved, s.p2pWanted, Bridge.networksUp());
         return s;
@@ -1261,9 +1387,10 @@ public final class MainActivity extends Activity {
         }
         show(wifiBox, s.staConnected);
         if (s.staConnected) {
-            wifiBars.set(s.staBars, s.staBars >= 3 ? GREEN : s.staBars == 2 ? AMBER : RED);
-            wifiLine.setText(s.staSsid + " · " + Dash.band(s.staFreq) + " ch " + Dash.channel(s.staFreq) + " · "
-                    + s.staRssi + " dBm · [" + s.staLink + " Mbit/s link rate]");   // theoretical PHY rate, not throughput
+            wifiBars.set(s.staBars, Dash.barsColor(s.staBars));
+            String rate = s.staTx > 0 && s.staRx > 0 ? "↑" + s.staTx + " ↓" + s.staRx : String.valueOf(s.staTx > 0 ? s.staTx : s.staLink);
+            wifiLine.setText(s.staSsid + " · " + (s.staStd > 0 ? "Wi-Fi " + s.staStd + " · " : "") + Dash.band(s.staFreq)
+                    + " ch " + Dash.channel(s.staFreq) + " · " + s.staRssi + " dBm · [" + rate + " Mbit/s link rate]");   // PHY rate, not throughput
         }
         // a working adapter is listed (with its IP) in the radio list; this line only explains a missing IP
         show(ethBox, s.ethIp == null && s.ethNoIp != null);
@@ -1272,6 +1399,7 @@ public final class MainActivity extends Activity {
                     + "Check the cable goes to a router or switch with DHCP, or unplug and replug the adapter.");
         }
         refreshAdvertise(s, p2pOn);
+        refreshFps(s);
 
         // ---- events
         eventsHeader.setText(eventsOpen ? "EVENTS ▾" : "EVENTS ▸");
@@ -1311,7 +1439,9 @@ public final class MainActivity extends Activity {
                 boolean dec = st.active && st.k > 1;
                 show(stBadge[i], dec);
                 stBadge[i].setText((st.k == 2 ? "½ rate" : "⅓ rate") + Dash.recoverLabel(s.irRecoverMs, st.k));
-                int col = !st.active ? GREY : st.k > 1 ? AMBER : st.fpsSent >= 0.9f * Math.max(1, st.fpsCap) ? GREEN : AMBER;
+                // amber = frames lost (queue overflow) or IR decimated. A short stall only delays frames: they stay
+                // queued and go out a moment later, so sent < captured within one second alone isn't a warning.
+                int col = !st.active ? GREY : st.k > 1 || st.lost > 0 ? AMBER : GREEN;
                 stSpark[i].set(st.hist, Math.max(15, st.fpsReq), col);
             } else {
                 stVal[i].setText(st.fpsSent > 0.5f ? Math.round(st.fpsSent) + " reports/s" : st.active ? "connected, no data" : "idle");

@@ -50,6 +50,7 @@ final class ScannerModel {
     final int rlePadTo;
     final List<int[]> irPreStreamProps = new ArrayList<>();
     final int irJpegQuality;
+    final int bridgeFps;      // Creality Scan's own IR fps behind a bridge ("Stock"), 0 = unknown (learned at runtime)
     final boolean imuPresent;
     final int hidInterface;                 // -1: first HID interface
     final List<int[]> accelProfiles = new ArrayList<>(), gyroProfiles = new ArrayList<>();
@@ -213,6 +214,7 @@ final class ScannerModel {
         this.rlePadTo = rle != null ? rle.optInt("pad_to", 1500) : 1500;
         pairs(m.optJSONArray("ir_pre_stream_props"), irPreStreamProps);
         this.irJpegQuality = m.optInt("ir_jpeg_quality", 98);
+        this.bridgeFps = m.optInt("bridge_fps", 0);
         JSONObject imu = m.optJSONObject("imu");
         this.imuPresent = imu != null && imu.optBoolean("present", false);
         this.hidInterface = imu == null || imu.isNull("hid_interface") ? -1 : imu.optInt("hid_interface", -1);

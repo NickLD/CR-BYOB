@@ -65,11 +65,31 @@ netsh wlan connect name="DIRECT-SB-CRBYOB-XXXX" ssid="DIRECT-SB-CRBYOB-XXXX" int
 The group hands out a default gateway (192.168.49.1); if the PC also has Ethernet, make sure the Wi-Fi
 route's metric is higher (`route print 0.0.0.0`).
 
+## Scanner frame-rate override (experimental)
+
+Behind a bridge, Creality Scan asks for less than the scanner can do: 15 fps for an Otter (30 on USB) and 10
+for a Ferret. *Scanner frame-rate override* in the dashboard's Experimental card, below Network, raises that.
+Nothing in Creality Scan is changed: the bridge advertises only the faster modes, and Creality Scan picks the
+closest rate on offer.
+
+| Choice | Otter | What it is |
+|---|---|---|
+| **Stock** | 15 fps, ~280 Mbit/s | Creality Scan Bridge default |
+| **Boost** | 20 fps, ~380 Mbit/s | the scanner's rate closest to halfway between Stock and Max |
+| **Max** | 30 fps, ~570 Mbit/s | the scanner's fastest mode; needs a very fast and stable link (Wi-Fi 6E/7 or Gigabit Ethernet) |
+
+Wired Gigabit is the safe choice for Max. A phone very close to a Wi-Fi 6E/7 access point can link faster
+than Gigabit and has handled Max too (in one test it ran smoother than USB Ethernet); the viewer's stats panel
+shows the Wi-Fi signal and link rate to judge it. The rates come from the attached scanner, so the card shows
+them once the bridge is running. A scanner that Creality Scan already runs at its top rate shows only Stock.
+Creality Scan reads the rate when it connects, so the choice is locked while it's connected: close Creality
+Scan, change it, and open Creality Scan again (the bridge can keep running).
+
 ## The dashboard
 
 <p>
   <img src="screenshots/dashboard.png" alt="Dashboard while streaming" width="300">
-  <img src="screenshots/dashboard-network.png" alt="Network section and events" width="300">
+  <img src="screenshots/dashboard-network.png" alt="Network and Experimental sections" width="300">
 </p>
 
 From top to bottom:
@@ -84,7 +104,9 @@ From top to bottom:
   sends both at half rate in step (a "½ rate" badge) rather than dropping left and right frames unevenly.
 - **Session stats**: time, data sent, average and peak bitrate, and per-stream delivery. *Details* has
   reliability counters and latency.
-- **Network**: the choice above, plus the Wi-Fi signal and speed warnings.
+- **Network**: the choice above, plus the Wi-Fi line (network, Wi-Fi generation, band and channel, signal,
+  and upload/download link rates) and speed warnings.
+- **Experimental**: the scanner frame-rate override (above).
 - **Events**: recent events in plain words, with the raw log below.
 - **Version** at the bottom: tap for *What's new* (and *Check for updates* in GitHub builds); long-press to
   copy your app version, phone and Android version for a bug report. GitHub builds also have a Ko-fi button
@@ -95,7 +117,9 @@ From top to bottom:
 ## Mirror viewer
 
 The **Mirror** button shows Creality Scan's color, IR and 3D views on the phone, like Creality's own phone
-app, with the scan controls (Start, Pause, Finish, Cancel) and a distance bar.
+app, with the scan controls (Start, Pause, Finish, and Delete once paused), a distance bar, and a stats panel
+with the stream rates, Creality Scan's point and frame counts, and the bridge's Wi-Fi link (signal, link rate
+and band).
 
 <p>
   <img src="screenshots/mirror-portrait.png" alt="Mirror viewer, portrait" width="300">
@@ -111,6 +135,38 @@ app, with the scan controls (Start, Pause, Finish, Cancel) and a distance bar.
   away with the edge tab.
 - While the viewer is hidden, the phone asks the PC for a low-bandwidth mirror stream, so it doesn't compete
   with the scanner streams.
+- **New scan**: when Creality Scan opens its New Scan page, the same settings open on the phone: object (face,
+  small, medium, large, body), alignment (geometry, texture, markers), accuracy, and for some scanners
+  projection, field of view and texture, plus the object color (standard, black, white, reflective) in Marker
+  mode. Each choice shows Creality Scan's own description ("Medium: 250x250x250 ~ 500x500x500mm³"). It offers
+  only what Creality Scan reports for the connected scanner and starts from the last settings used. **Create**
+  makes the scan and starts the preview; then tap **Start**. **New scan…** reopens it, and during the preview
+  **Settings…** changes the settings: Creality Scan restarts the preview with them. *Exclude Flat Base* stays
+  on the PC: Creality Scan doesn't accept it from a phone.
+- **Lights and exposure** (once a scan exists): 💡 on the 3D view switches the fill light, and **AUTO**
+  switches IR exposure to manual (**MAN**), with a slider beside it. **Lighting…** also sets laser
+  power and color exposure, each with its auto switch. Only the controls the scanner has are shown.
+- Creality Scan's messages appear along the bottom of the 3D view ("Tracking lost…", "Preview…"), and its
+  pop-ups ("Delete scan?", "Max frames reached", …) appear on the phone with the same buttons; your answer
+  goes back to the PC. A few of its pop-ups exist only on the PC: while one is open Creality Scan ignores
+  the phone and says "Someone is using Creality Scan on the PC". Answer it there.
+
+<img src="screenshots/scan-settings.png" alt="Scan settings on the phone: object, alignment and accuracy, with Creality Scan's descriptions" width="360">
+
+**Mirror quality**: tap the *Mirror … fps ▾* pill on the main view.
+- *Frame rate* (30, 20, 15 or 10 fps) and *3D view resolution* (Full, 75% or 50%). Creality Scan only takes the
+  resolution when the mirror connects, so changing it reconnects the mirror for a second or two.
+- *Adjust automatically* (on by default) treats both as a ceiling. When more than 5% of the last 20 s of mirror
+  video froze, it lowers the resolution (Full → 75% → 50%) and, once that's at 50%, the frame rate
+  (30 → 20 → 15 → 10): smooth motion matters more than detail for aiming the scanner. After 30 s of smooth
+  video it raises the frame rate again, and after 2 smooth minutes the resolution. Creality Scan
+  sends mirror frames unevenly while it processes a fast scan; in testing a 15 fps mirror froze about a third
+  as often as a 30 fps one. The pill shows what's in effect, e.g. *Mirror 20 fps · 960×720 · auto*, in amber while Auto runs below
+  your choices.
+
+Neither changes what the scanner sends to the PC. The viewer's status line shows the rate each view actually
+arrives at ("Mirror: RGB 15 · IR 10 · 3D 15 fps").
+*PC scan rate* is Creality Scan's own figure: how many scanner frames per second it processes.
 
 ## Updates
 

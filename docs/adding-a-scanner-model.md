@@ -37,6 +37,9 @@ The app logs what it picked as `scanner_model` and `scanner_roles`, and shows th
 | `rle` | `params`: default of struct 0x42A (5 × i32; field 0 = RLE flat-block variance threshold), which the bridge answers and accepts sets for on RLE models; `pad_to`: RLE frames are zero-padded to this size | `{100,60,6,15,15}`, 1500 |
 | `ir_pre_stream_props` | `[prop, value]` bool sets sent to the scanner before an IR stream starts | `[[112,1],[18,1]]` (0x70, 0x12) |
 | `ir_jpeg_quality` | Quality for IR→JPEG (the official bridge uses 98, and 90 for PID 0x0C05) | 98 |
+| `bridge_fps` | The IR frame rate Creality Scan asks a bridge for (its "Stock" rate). It comes from the app's built-in profile table: Otter 15, Ferret 10 [O]. When unset, the bridge learns it the first time Creality Scan starts IR at Stock. Boost and Max are worked out from the scanner's own UVC modes | unset |
+| `scan_options` | Scan settings Creality Scan offers for this model: `projection` (`infrared`, `blue_light`), `scan_mode` (`face`, `obj_small`, `obj_medium`, `obj_big`, `human`), `accuracy` (`fast`, `high`), and for laser scanners `light_type` and `fov`. From the scan library's built-in profile table (lib_orbbec_scan.dll) [O]; names as in `SupportedScanConfig`. Not every combination is valid: Creality Scan sends the exact list live while mirroring | unset |
+| `creality_scan_config` | The `SupportedScanConfig` Creality Scan sent for this model, captured from a mirror session [O]: per scan mode, which fuse modes (geometry, texture/RGBD, marker) and which accuracy and FOV options are allowed. Only the Otter has one so far | unset |
 | `imu.present` | Advertise ACCEL/GYRO and the TCP 8900 IMU port | true |
 | `imu.hid_interface` | USB interface of the IMU HID. Null means the first HID interface | 6 |
 | `imu.accel_profiles`, `imu.gyro_profiles` | `[fullScaleRange, sampleRate]` pairs for 0xFC1 | see defaults |

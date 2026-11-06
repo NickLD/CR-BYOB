@@ -1,0 +1,572 @@
+{
+ "_doc": [
+  "Creality Scan's mirror protocol (PC 1.4.3 'remote cast', JSON-RPC 2.0 over a WebRTC data channel): every",
+  "state key, scan setting, button, status, notification and dialog, as numbers with names and Creality Scan's",
+  "own English text (from its string table, 'loc_key'). Bundled as assets/mirror-protocol.json; the mirror",
+  "viewer uses it for labels. Source: Orbbec.Network enums in Creality Scan's IL2CPP metadata [O] and",
+  "resources.assets (English table) [O]. Which scan settings a scanner supports is not here: Creality Scan",
+  "sends that live (state key SupportedScanConfig) and per model it is in scanners.json (scan_options).",
+  "Wire formats: docs/mirroring in the dev repo; params of the bool/number commands are [value] [I]."
+ ],
+ "methods": {
+  "phone_to_pc": {
+   "init": "request {DicDatas:{CustomModelTextureSize:[w,h]}, Version, Platform:2, ScannerPid, Uid}",
+   "heartbeat": "notification, no params",
+   "stream.quality": "{TextureType, ScaleFactor (ignored), FrameRate, QualityFactor}",
+   "scanCreate": "no params; new scan with the settings applied (ScanState.CreateScan); ignored while a modal panel is open on the PC",
+   "scanStart": "no params; start, or resume when paused",
+   "pauseScan": "no params",
+   "stopScan": "no params (finish)",
+   "clearScan": "no params (discard)",
+   "scan.setParams": "{DicDatas:{<scan_params key>: value, ...}}, any subset; applied only while ScanParamsModifyRange is All (no scan created)",
+   "rgb.fillLight": "[bool]",
+   "rgb.switchAutoMode": "[bool]",
+   "rgb.expChange": "[number]",
+   "ir.switchAutoMode": "[bool]",
+   "ir.expSwitchAutoMode": "[bool]",
+   "ir.laserSwitchAutoMode": "[bool]",
+   "ir.expChange": "[number]",
+   "ir.laserChange": "[number]",
+   "ir.expAndLaserChange": "[number]",
+   "camera.zoom": "[number]",
+   "dialog.buttonClick": "{DialogId, ButtonType}"
+  },
+  "pc_to_phone": {
+   "initResult": "response to init",
+   "trackInfo": "{TrackID, TextureType}",
+   "stateSync": "{DicDatas:{<state key name>: value, ...}}",
+   "notification": "{NotificationType, ContentType, LevelType, IsVisible}",
+   "dialog": "{DialogId, TitleType, TitleArgs, ContentType, ContentArgs, HasLeftButton, HasMiddleButton, HasRightButton, LeftButtonTextType, MiddleButtonTextType, RightButtonTextType, IsVisible, ClickedButtonType}",
+   "loading": "{IsVisible}",
+   "progress": "{IsVisible, Progress}"
+  }
+ },
+ "state_keys": {
+  "1": "DeviceStatus",
+  "2": "DeviceName",
+  "3": "ScannerFirmwareVersion",
+  "4": "IsWifiConnection",
+  "5": "BatteryValue",
+  "6": "DeviceSoundMute",
+  "101": "ScanStatus",
+  "102": "ScanStatusResult",
+  "103": "ScanParams",
+  "104": "IrLaserMin",
+  "105": "IrLaserMax",
+  "106": "IrLaserValue",
+  "107": "IrExpMin",
+  "108": "IrExpMax",
+  "109": "IrExpValue",
+  "110": "IrAutoMode",
+  "111": "IrExpAutoMode",
+  "112": "IrLaserAutoMode",
+  "113": "RgbRenderSupport",
+  "114": "RgbExpMin",
+  "115": "RgbExpMax",
+  "116": "RgbExpValue",
+  "117": "RgbAutoMode",
+  "118": "RgbFillLightSupport",
+  "119": "RgbFillLightOn",
+  "120": "FrameId",
+  "121": "PointCount",
+  "122": "MarkerCount",
+  "123": "FrameRate",
+  "124": "Temperature",
+  "125": "FreeMemory",
+  "126": "StreamBitRate",
+  "127": "DistanceAdvice",
+  "128": "AppliedScanParams",
+  "129": "SupportedScanConfig",
+  "130": "IrExpAndLaserMin",
+  "131": "IrExpAndLaserMax",
+  "132": "IrExpAndLaserValue",
+  "133": "IrRenderVisible",
+  "134": "RgbRenderVisible",
+  "135": "ScanParamsModifyRange",
+  "136": "CameraZoomMin",
+  "137": "CameraZoomMax",
+  "138": "CameraZoomValue",
+  "139": "CameraZoomSupport",
+  "140": "ScanButtonStatus",
+  "141": "ScanCountdownValue",
+  "142": "IrLaserVisible",
+  "201": "StateMachineState"
+ },
+ "main_state": {
+  "1": "HomeState",
+  "2": "ScanFusionState",
+  "3": "CalibrationState"
+ },
+ "sub_state": {
+  "1": "ScanFusionIdelState",
+  "2": "ScanState"
+ },
+ "scan_status": {
+  "0": "Uncreate",
+  "1": "Created",
+  "2": "Previewing",
+  "3": "Scanning",
+  "4": "Paused",
+  "5": "Stopped"
+ },
+ "texture_type": {
+  "1": "RGB",
+  "2": "IR",
+  "4": "Model",
+  "-1": "All"
+ },
+ "button_type": {
+  "1": "Start",
+  "2": "Pause",
+  "3": "Stop",
+  "4": "Clear",
+  "5": "Create"
+ },
+ "button_state": {
+  "1": "Show",
+  "2": "Hide",
+  "3": "Disable"
+ },
+ "scan_params_modify_range": {
+  "0": "None",
+  "1": "All"
+ },
+ "scan_params": {
+  "1": {
+   "name": "TextureMode",
+   "values": {
+    "0": "With texture",
+    "1": "No texture"
+   }
+  },
+  "2": {
+   "name": "FrameRate",
+   "values": {
+    "0": "Auto",
+    "1": "Standard",
+    "2": "Balanced",
+    "3": "Fast"
+   }
+  },
+  "3": {
+   "name": "Projection",
+   "values": {
+    "0": "Infrared Mode",
+    "1": "Blue Laser Mode"
+   },
+   "supported_config_key": {
+    "0": "infrared",
+    "1": "blue_light"
+   },
+   "tips": {
+    "0": "Suitable for fast scanning. Supports geometry and texture tracking. Suitable for scanning human bodies, faces, sculptures, cultural relics, and similar objects.",
+    "1": "Suitable for high-precision detailed scanning. Supports tracking dark and reflective surfaces. Suitable for scanning industrial parts, complex molds, fine crafts, and similar objects."
+   }
+  },
+  "4": {
+   "name": "ScanMode",
+   "values": {
+    "0": "Face",
+    "1": "Small",
+    "2": "Medium",
+    "3": "Large",
+    "4": "Body"
+   },
+   "supported_config_key": {
+    "0": "face",
+    "1": "obj_small",
+    "2": "obj_medium",
+    "3": "obj_big",
+    "4": "human"
+   },
+   "tips": {
+    "0": "Detailed Face scan only. For Hair scan, please use Body mode.",
+    "1": "Small: 150x150x150 ~ 250x250x250mm³",
+    "2": "Medium: 250x250x250 ~ 500x500x500mm³",
+    "3": "Large: 500x500x500 ~ 2000x2000x2000mm³",
+    "4": "To scan a full body quickly. Able to scan hair directly without scanning spray."
+   }
+  },
+  "5": {
+   "name": "Accuracy",
+   "values": {
+    "0": "Fast",
+    "1": "High"
+   },
+   "tips": {
+    "0": "Fast Mode offers quicker scanning speed but with relatively less details.",
+    "1": "High-quality mode provides richer details, which may decrease frame rate."
+   }
+  },
+  "6": {
+   "name": "FuseMode",
+   "values": {
+    "0": "Geometry",
+    "1": "Texture",
+    "2": "Marker",
+    "3": "Markerless"
+   },
+   "supported_config_key": {
+    "0": "geo",
+    "1": "rgbd",
+    "2": "marker",
+    "3": "markerless"
+   },
+   "tips": {
+    "0": "Under Geometry mode, flat and regularly shaped objects may cause tracking loss while scanning. \n If the object lacks rich texture features, It is recommended to use Marker mode after randomly placing circular markers on the surface.",
+    "2": "Large: D ≥ 6mm, Medium&Small: D≥3mm\nD: the inner diameter of the marking circle spot\nNote: Please use non-reflective markers for marker mode."
+   }
+  },
+  "7": {
+   "name": "ScanFov",
+   "values": {
+    "0": "Normal",
+    "1": "Wide"
+   },
+   "tips": {
+    "0": "Standard FOV offers higher scanning accuracy, ideal for capturing fine details.",
+    "1": "Wide FOV covers a larger area, making it suitable for quickly scanning large objects or scenes."
+   }
+  },
+  "8": {
+   "name": "VoxelSize",
+   "type": "float"
+  },
+  "9": {
+   "name": "LightType",
+   "values": {
+    "0": "Parallel lines",
+    "1": "Cross lines",
+    "2": "Single line"
+   }
+  },
+  "10": {
+   "name": "ScanType",
+   "values": {
+    "0": "Point cloud fused",
+    "1": "Laser detailed",
+    "2": "Marker framework"
+   }
+  },
+  "11": {
+   "name": "DetailVoxelSize",
+   "type": "float"
+  },
+  "12": {
+   "name": "ObjectMaterial",
+   "label": "Object Color",
+   "values": {
+    "0": "Standard Object",
+    "1": "Black Object",
+    "2": "White Object",
+    "3": "Reflective Object"
+   }
+  }
+ },
+ "notification_type": {
+  "1": "Normal",
+  "2": "Persistent",
+  "3": "Operation"
+ },
+ "notification_level": {
+  "1": "Info",
+  "2": "Warning",
+  "3": "Error",
+  "4": "Success"
+ },
+ "notification_content": {
+  "1": {
+   "name": "TrackingLostReturnArea",
+   "text": "Tracking lost. Please aim the scanner at the scanned area.",
+   "loc_key": "TRACKING_LOST_RETURN_AREA"
+  },
+  "2": {
+   "name": "InsufficientPoints",
+   "text": "The scanned pointcloud is not enough, please adjust the IR exposure or the scanning distance.",
+   "loc_key": "INSUFFICIENT_POINTS"
+  },
+  "3": {
+   "name": "MarkersNotEnough_6",
+   "text": "Not enough markers (≥6)",
+   "loc_key": "MARKERS_NOT_ENOUGH_6"
+  },
+  "4": {
+   "name": "MarkersNotEnough_4",
+   "text": "Not enough markers (≥4)",
+   "loc_key": "MARKERS_NOT_ENOUGH_4"
+  },
+  "5": {
+   "name": "ScanModelTurnsBlue",
+   "text": "Please keep scanning until the model's color turns blue",
+   "loc_key": "SCAN_MODEL_TURNS_BLUE"
+  },
+  "6": {
+   "name": "ScanModelTurnsGreen",
+   "text": "Please keep scanning till the model's color turns green",
+   "loc_key": "SCAN_MODEL_TURNS_GREEN"
+  },
+  "7": {
+   "name": "ServerIsOperatingPleaseCheck",
+   "text": "Someone is using Creality Scan on the PC. Please check the PC."
+  },
+  "8": {
+   "name": "IrImageTooDarkPleaseIncreaseExposure",
+   "text": "The IR camera image is too dark. Please adjust the exposure or laser brightness.",
+   "loc_key": "IR_IMAGE_TOO_DARK_PLEASE_INCREASE_EXPOSURE"
+  },
+  "9": {
+   "name": "IrImageTooBrightPleaseDecreaseExposure",
+   "text": "The IR camera image is too bright. Please adjust the exposure or laser intensity.",
+   "loc_key": "IR_IMAGE_TOO_BRIGHT_PLEASE_DECREASE_EXPOSURE"
+  },
+  "10": {
+   "name": "FaceOrBodyScanTips",
+   "text": "Face the camera to start scanning.",
+   "loc_key": "FACE_OR_BODY_SCAN_TIPS"
+  },
+  "11": {
+   "name": "ManualAdjustTips",
+   "text": "Manual Adjustment",
+   "loc_key": "MANUAL_ADJUST_TIPS"
+  },
+  "12": {
+   "name": "AutoAdjustTips",
+   "text": "Automatic Adjustment",
+   "loc_key": "AUTO_ADJUST_TIPS"
+  },
+  "1001": {
+   "name": "BeforePreview",
+   "text": "Please set the scanning parameters and then click [Preview] to scan.",
+   "loc_key": "PERSISTENT_NOTICE_BEFORE_PREVIEW"
+  },
+  "1002": {
+   "name": "Preview",
+   "text": "Please click [Start] to scan",
+   "loc_key": "PERSISTENT_NOTICE_PREVIEW"
+  },
+  "1003": {
+   "name": "Pause",
+   "text": "Pause",
+   "loc_key": "PAUSE"
+  }
+ },
+ "dialog_message_type": {
+  "1": "Show",
+  "2": "Hide",
+  "3": "ButtonClick"
+ },
+ "dialog_button": {
+  "1": "Left",
+  "2": "Middle",
+  "3": "Right"
+ },
+ "dialog_title": {
+  "1": {
+   "name": "InvalidScan",
+   "text": "Insufficient scanning data, please continue scanning.",
+   "loc_key": "INVALID_SCAN_NOTICE"
+  },
+  "2": {
+   "name": "ScanningAddNewScan",
+   "text": "Save the current scan and start a new scan?",
+   "loc_key": "SCANNING_ADD_NEW_SCAN_NOTICE"
+  },
+  "3": {
+   "name": "MarkerFrameworkOptFailed",
+   "text": "Insufficient scanning data, please continue scanning.",
+   "loc_key": "MARKER_FRAMEWORK_OPT_FAILED_NOTICE"
+  },
+  "4": {
+   "name": "ChangeMarkerToFuseScan",
+   "text": "Complete Global Marker Scan. Start Pointcloud Scan?",
+   "loc_key": "CHANGE_MARKER_TO_FUSE_SCAN_NOTICE"
+  },
+  "5": {
+   "name": "MaxFramesReached",
+   "text": "Scanning has reached the maximum frame limit, please complete scanning.",
+   "loc_key": "MAX_FRAMES_REACHED_NOTICE"
+  },
+  "6": {
+   "name": "ClearAndScanMarker",
+   "text": "The data will be permanently deleted and cannot be recovered.",
+   "loc_key": "CLEAR_AND_SCAN_MARKER_NOTICE"
+  },
+  "7": {
+   "name": "ApplyDetailScan",
+   "text": "The data in the selected area will be permanently deleted for Local Detail Scan. <br>Resolution {0}mm",
+   "loc_key": "APPLY_DETAIL_SCAN_NOTICE"
+  },
+  "8": {
+   "name": "DeleteSelectScan",
+   "text": "The data will be permanently deleted and cannot be recovered.",
+   "loc_key": "DELETE_SELECT_SCAN_NOTICE"
+  },
+  "9": {
+   "name": "ExitPlaneRemoveEditMode",
+   "text": "Current changes have not been applied. Do you want to exit the clipping plane?",
+   "loc_key": "EXIT_PLANE_REMOVE_EDIT_MODE_NOTICE"
+  },
+  "10": {
+   "name": "BatteryLowPleaseChargeBeforeScan",
+   "text": "The device battery level is below {0}. Please charge it promptly to ensure scan quality and data integrity.",
+   "loc_key": "BATTERY_LOW_PLEASE_CHARGE_BEFORE_SCAN"
+  },
+  "11": {
+   "name": "RemoveFilterOnLaserModeTips",
+   "text": "In Blue Line Laser mode, make sure the infrared filter has been removed from the camera. Otherwise, normal scanning cannot be completed.",
+   "loc_key": "REMOVE_FILTER_ON_LASER_MODE_TIPS"
+  },
+  "12": {
+   "name": "BatteryLowPleaseChargeBeforeCalibration",
+   "text": "Device battery level is below {0}, please charge the device before starting calibration.",
+   "loc_key": "BATTERY_LOW_PLEASE_CHARGE_BEFORE_CALIBRATION"
+  },
+  "13": {
+   "name": "BatteryLowDuringScanPleaseChargeOrSaveProgress",
+   "text": "The device battery level is below {0}, so scanning cannot continue. To prevent data loss, connect the device to a power source immediately so you can resume scanning seamlessly. If you cannot connect it, save your current progress first.",
+   "loc_key": "BATTERY_LOW_DURING_SCAN_PLEASE_CHARGE_OR_SAVE_PROGRESS"
+  },
+  "14": {
+   "name": "BatteryLowFillLightNotAllowed",
+   "text": "The current battery level is low. Turning on the fill light is not supported.",
+   "loc_key": "BATTERY_LOW_FILL_LIGHT_NOT_ALLOWED"
+  },
+  "15": {
+   "name": "BatteryLowFillLightAutoClosed",
+   "text": "Battery level is below {0}. The fill light has been automatically turned off to extend battery life and can be turned on again after connecting to power.",
+   "loc_key": "BATTERY_LOW_FILL_LIGHT_AUTO_CLOSED"
+  },
+  "16": {
+   "name": "WearFilterOnInfraredModeUnderStrongLightEnvironmentTips",
+   "text": "When using infrared scanning mode in a strong-light environment, it is recommended to attach the filter before scanning.",
+   "loc_key": "WEAR_FILTER_ON_INFRARED_MODE_UNDER_STRONG_LIGHT_ENVIRONMENT_TIPS"
+  },
+  "17": {
+   "name": "ExitScanToProcessNotice",
+   "text": "Exit scan?",
+   "loc_key": "EXIT_SCAN_TO_PROCESS_NOTICE"
+  },
+  "1001": {
+   "name": "PreviewFailed",
+   "text": "Scanner image preview failed.",
+   "loc_key": "PREVIEW_FAILED_NOTICE"
+  },
+  "1002": {
+   "name": "DeviceInconsistent",
+   "text": "A new scanner has been detected. Please complete the scan or delete the current scan, then click \"New\" to start scanning.",
+   "loc_key": "DEVICE_INCONSISTENT"
+  },
+  "1003": {
+   "name": "DeviceBusy",
+   "text": "The scanner is currently in use.",
+   "loc_key": "DEVICE_BUSY_NOTICE"
+  },
+  "1004": {
+   "name": "OutOfHardDisk",
+   "text": "Insufficient disk space. Please clear disk space and try again.",
+   "loc_key": "OUT_HARD_DISK_NOTICE"
+  },
+  "1005": {
+   "name": "OutOfMemory",
+   "text": "Out of memory, please free up memory and try again.",
+   "loc_key": "OUT_OF_MEMORY_DIALOG"
+  },
+  "1006": {
+   "name": "PreviewFailedPleaseRestartSoftware",
+   "text": "Scanner image preview failed. Please restart the software and try again.",
+   "loc_key": "PREVIEW_FAILED_PLEASE_RESTART_SOFTWARE"
+  },
+  "2001": {
+   "name": "ScanningFailed",
+   "text": "The scanning process was interrupted. Please exit and try again",
+   "loc_key": "SCAN_SCANNING_FAILED_NOTICE"
+  },
+  "2002": {
+   "name": "ScanReachedMemLimit",
+   "text": "Scanning has reached the RAM limit, please complete scanning.",
+   "loc_key": "SCAN_REACHED_MEM_LIMIT_NOTICE"
+  },
+  "2003": {
+   "name": "ScanDiskSpaceNotEnough",
+   "text": "Insufficient disk space. Please complete the scan and clear disk space before continuing.",
+   "loc_key": "SCAN_DISK_SPACE_NOT_ENOUGH_NOTICE"
+  },
+  "2004": {
+   "name": "ScanDiskWriteError",
+   "text": "Disk write failed. Please check disk space or try again.",
+   "loc_key": "SCAN_DISK_WRITE_ERROR_NOTICE"
+  },
+  "3001": {
+   "name": "WearFilter",
+   "text": "Strong light environment detected. It is recommended to wear the filter for scanning.",
+   "loc_key": "WEAR_FILTER_NOTICE"
+  },
+  "3002": {
+   "name": "RemoveFilter",
+   "text": "Not removing the filter may cause abnormal results. Please confirm it has been removed before continuing.",
+   "loc_key": "REMOVE_FILTER_NOTICE"
+  }
+ },
+ "dialog_content": {
+  "3001": {
+   "name": "WearFilter",
+   "text": "Strong light environment detected. It is recommended to wear the filter for scanning.",
+   "loc_key": "WEAR_FILTER_NOTICE"
+  },
+  "3002": {
+   "name": "RemoveFilter",
+   "text": "Not removing the filter may cause abnormal results. Please confirm it has been removed before continuing.",
+   "loc_key": "REMOVE_FILTER_NOTICE"
+  }
+ },
+ "dialog_button_text": {
+  "1": {
+   "name": "Confirm",
+   "text": "OK",
+   "loc_key": "CONFIRM"
+  },
+  "2": {
+   "name": "Cancel",
+   "text": "Cancel",
+   "loc_key": "CANCEL"
+  },
+  "3": {
+   "name": "KeepMarkers",
+   "text": "Keep Markers",
+   "loc_key": "KEEP_MARKERS"
+  },
+  "4": {
+   "name": "ClearAll",
+   "text": "Clear All",
+   "loc_key": "CLEAR_ALL"
+  },
+  "5": {
+   "name": "DontShow",
+   "text": "Don't show again",
+   "loc_key": "DONT_SHOW"
+  },
+  "6": {
+   "name": "SaveAndExit",
+   "text": "Save Data and Exit",
+   "loc_key": "SAVE_AND_EXIT"
+  }
+ },
+ "device_pid": {
+  "0": "UNKNOWN",
+  "1692": "SCANNER_FERRET",
+  "1697": "WIFI_BRIDGE",
+  "1704": "SCANNER_RAPTOR",
+  "1754": "SCANNER_OTTER",
+  "3072": "SCANNER_RAPTORX",
+  "3073": "SCAN_BRIDGE",
+  "3075": "SCANNER_RAPTORPRO",
+  "3089": "SCANNER_RAPTORPROMAX",
+  "3076": "SCANNER_OTTER_LITE",
+  "3077": "SCANNER_SERMOON_X1",
+  "3078": "SCANNER_SERMOON_S1",
+  "3080": "SCANNER_SERMOON_P1",
+  "3079": "LITE_BRIDGE",
+  "3081": "SCANNER_OTTER_LITE_BASIC",
+  "3083": "SCANNER_RAPTOR_PIKA"
+ }
+}

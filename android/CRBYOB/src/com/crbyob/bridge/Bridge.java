@@ -506,6 +506,39 @@ public final class Bridge {
         return out;
     }
 
+    /** stream_map.json "fps_mode": stock | boost | max (FpsChoice). */
+    String fpsMode() {
+        return FpsChoice.normalize(streamMap().optString("fps_mode", FpsChoice.STOCK));
+    }
+
+    /** The attached scanner's frame-rate choices, or null if no scanner is open. */
+    FpsChoice fpsChoice() {
+        UsbDesc.Vs vs = vsFor("ir_l");
+        if (vs == null) vs = vsFor("ir");
+        if (vs == null) return null;
+        int stock = model.bridgeFps > 0 ? model.bridgeFps : prefs.getInt("stock_fps_" + model.pid, 0);
+        return FpsChoice.of(vs.profiles, stock);
+    }
+
+    /**
+     * Modes slower than this are left out of 0xFC1 (0 = none). stream_map.json "fps_floor" (any number, for tests)
+     * wins over "fps_mode".
+     */
+    int fpsFloor() {
+        JSONObject j = streamMap();
+        int explicit = j.optInt("fps_floor", 0);
+        if (explicit > 0) return explicit;
+        FpsChoice c = fpsChoice();
+        return c == null ? 0 : c.floorFor(FpsChoice.normalize(j.optString("fps_mode", FpsChoice.STOCK)));
+    }
+
+    /** Creality Scan started IR at fps with no floor: that's its Stock rate for a model without bridge_fps. */
+    void noteStockFps(int fps) {
+        if (model.bridgeFps > 0 || fps <= 0 || prefs.getInt("stock_fps_" + model.pid, 0) == fps) return;
+        prefs.edit().putInt("stock_fps_" + model.pid, fps).apply();
+        BLog.log("stock_fps_learned", "pid", model.pid, "fps", fps);
+    }
+
     /** stream_map.json "imu" wins over the model. */
     boolean imuOn() {
         return streamMap().optBoolean("imu", model.imuPresent);
@@ -534,7 +567,7 @@ public final class Bridge {
         Otter o = otter;
         String fw = o != null ? o.fwVersion : null;
         ByteArrayOutputStream body = new ByteArrayOutputStream();
-        int count = 0;
+        int count = 0, floor = fpsFloor(), hidden = 0;
         for (String stream : m.fc1Order) {
             UsbDesc.Vs vs = vsFor(stream);
             if (vs == null) continue;
@@ -544,6 +577,7 @@ public final class Bridge {
                 if (!allowed.contains(p.fourcc)) continue;
                 ScannerModel.Fmt f = m.fmt(p.fourcc);
                 if (f == null || !f.fc1) continue;
+                if (UsbDesc.belowFpsFloor(vs.profiles, p, floor)) { hidden++; continue; }
                 videoEntry(body, st, p, f.ob);
                 count++;
                 if (isIr(st) && p.fourcc.equals("GREY")) {
@@ -560,6 +594,7 @@ public final class Bridge {
             for (int[] a : m.accelProfiles) { byte[] e = new byte[18]; Hp.putU16(e, 0, ST_ACCEL); Hp.putU16(e, 2, a[0]); Hp.putU16(e, 4, a[1]); body.write(e, 0, 18); count++; }
             for (int[] g : m.gyroProfiles) { byte[] e = new byte[18]; Hp.putU16(e, 0, ST_GYRO); Hp.putU16(e, 2, g[0]); Hp.putU16(e, 4, g[1]); body.write(e, 0, 18); count++; }
         }
+        if (floor > 0) BLog.log("fc1_fps_floor", "floor", floor, "hidden", hidden, "advertised", count);
         byte[] b = body.toByteArray();
         byte[] out = Arrays.copyOf(u16le(18, count), 4 + b.length);
         System.arraycopy(b, 0, out, 4, b.length);

@@ -162,16 +162,19 @@ android {
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20231013")   // real org.json for JVM tests (android.jar only has stubs)
 }
 
 // ---------------------------------------------------------------------------------------------
 // Files shared with the rest of the repo, bundled as assets:
-//   models/scanners.json -> assets/scanners.json  (validated as JSON)
+//   models/scanners.json       -> assets/scanners.json        (validated as JSON)
+//   models/mirror-protocol.json -> assets/mirror-protocol.json (validated as JSON; mirror viewer labels)
 //   CHANGELOG.md         -> assets/CHANGELOG.md   ("What's new" in the app)
 // A release build (exact tag) fails unless CHANGELOG.md has a dated "## [X.Y.Z] - YYYY-MM-DD" section.
 // ---------------------------------------------------------------------------------------------
 abstract class BundleSharedAssets : DefaultTask() {
     @get:InputFile abstract val scannerModels: RegularFileProperty
+    @get:InputFile abstract val mirrorProtocol: RegularFileProperty
     @get:InputFile abstract val changelog: RegularFileProperty
     @get:Input abstract val releaseVersion: Property<String>   // "" for dev builds
     @get:OutputDirectory abstract val outputDir: DirectoryProperty
@@ -190,6 +193,14 @@ abstract class BundleSharedAssets : DefaultTask() {
         }
         models.copyTo(File(out, "scanners.json"))
 
+        val protocol = mirrorProtocol.get().asFile
+        try {
+            groovy.json.JsonSlurper().parse(protocol)
+        } catch (e: Exception) {
+            throw GradleException("${protocol.path} is not valid JSON: ${e.message}")
+        }
+        protocol.copyTo(File(out, "mirror-protocol.json"))
+
         val log = changelog.get().asFile
         val version = releaseVersion.get()
         if (version.isNotEmpty()) {
@@ -203,6 +214,7 @@ abstract class BundleSharedAssets : DefaultTask() {
 
 val bundleSharedAssets = tasks.register<BundleSharedAssets>("bundleSharedAssets") {
     scannerModels.set(rootProject.file("../models/scanners.json"))
+    mirrorProtocol.set(rootProject.file("../models/mirror-protocol.json"))
     changelog.set(rootProject.file("../CHANGELOG.md"))
     releaseVersion.set(if (appVersion.name.contains("-dev")) "" else appVersion.name)
     outputDir.set(layout.buildDirectory.dir("generated/sharedAssets"))

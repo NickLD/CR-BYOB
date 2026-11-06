@@ -55,6 +55,21 @@ public final class UsbDesc {
         public final List<String> unknownFormats = new ArrayList<>();
     }
 
+    /**
+     * True if p should be left out of the 0xFC1 list under an fps floor (0 = off).
+     * Creality Scan takes the fps from its own table (15 for an Otter behind a bridge). For each stream it then
+     * keeps the smallest advertised fps that is at least that value, among modes of the same size and format
+     * (lib_orbbec_scan.dll 0x1808E5DA0). Hiding the slower modes therefore raises the rate it asks for.
+     * If a size/format has no mode at or above the floor, its fastest mode stays, so the stream still matches.
+     */
+    public static boolean belowFpsFloor(List<Profile> all, Profile p, int floor) {
+        if (floor <= 0 || p.fps >= floor) return false;
+        int max = 0;
+        for (Profile q : all)
+            if (q.fourcc.equals(p.fourcc) && q.width == p.width && q.height == p.height) max = Math.max(max, q.fps);
+        return p.fps < Math.min(floor, max);
+    }
+
     public static final class Hid {
         public int iface;
         public int endpoint = -1;

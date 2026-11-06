@@ -36,7 +36,11 @@ finds it over the network like the real thing.
 - **Four ways to connect:** Ethernet, Wi-Fi Direct, your home Wi-Fi, or this phone only.
 - **No PC needed if you want.** *This phone only (Local Mobile App Scanning)* feeds the CrealityScan app on
   the same phone.
-- **Mirror viewer.** Creality Scan's color, IR and 3D views on the phone, with Start, Pause, Finish and Cancel.
+- **Mirror viewer.** Creality Scan's color, IR and 3D views on the phone, with Start, Pause, Finish and Delete,
+  new-scan setup, fill light and exposure, and Creality Scan's messages and pop-ups.
+- **Up to 30 fps (experimental).** Creality Scan asks a Scan Bridge for 15 fps from an Otter; the
+  [frame-rate override](docs/using-the-app.md#scanner-frame-rate-override-experimental) gets 20 or 30 on a
+  fast link, with nothing changed in Creality Scan.
 - **Live dashboard.** Scanner and power status, per-stream frame rates, link quality and session statistics.
 - **Update check** against GitHub Releases, with release notes after each update.
 
@@ -50,9 +54,10 @@ finds it over the network like the real thing.
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/mirror-landscape.png" alt="Mirror viewer in landscape during a scan over Wi-Fi Direct" width="100%">
+  <img src="docs/photos/mirror-in-hand.jpg" alt="Scanning an armchair with a CR-Scan Otter on a grip, the phone showing the mirror viewer in landscape" width="100%">
   <br>
-  <sub>The mirror viewer in landscape, during a scan over Wi-Fi Direct.</sub>
+  <sub>Scanning an armchair over home Wi-Fi 7 with the frame-rate override on Max: all three streams at about
+  30 fps. The mirror viewer shows Creality Scan's 3D, color and IR views, the scan controls, and the Wi-Fi link.</sub>
 </p>
 
 <p align="center">
