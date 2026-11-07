@@ -21,7 +21,7 @@ Two product flavors share the application ID and signing key, so people can move
 
 | Flavor | Distributed via | Updates |
 |---|---|---|
-| `github` | GitHub Releases (sideload) | in-app check against GitHub Releases |
+| `github` | GitHub Releases (sideload) | in-app check and install from GitHub Releases (a debug build can't install release APKs: different key) |
 | `play` | Google Play | through Play only; no self-update code |
 
 Debug builds are signed with the standard `~/.android/debug.keystore`. Release builds come out unsigned
@@ -53,6 +53,8 @@ am start -n com.crbyob.bridge/.MainActivity --ez test_pattern true     # synthet
 am start -n com.crbyob.bridge/.MainActivity --es mirror_host 192.168.1.20[:port]   # open the mirror viewer
 am start -n com.crbyob.bridge/.MainActivity --ez show_when_locked true # show over the lock screen
 am start -n com.crbyob.bridge/.MainActivity --es update_repo owner/name --ez update_check true
+# update_repo also takes a URL that serves GitHub's /releases JSON (debug builds allow plain http), e.g. a
+# fake API on the PC behind `adb reverse tcp:8765 tcp:8765`: --es update_repo http://127.0.0.1:8765
 ```
 
 Mirror test hooks: `--ei mirror_port <p>`, `--ez mirror_auto_ui true`, `--ez mirror_reset true`. Debug builds

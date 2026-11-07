@@ -104,4 +104,5 @@ probes the PC's TCP port, because the PC treats any connection as a phone joinin
 | `Dash`, `Widgets`, `SessionStats`, `PermissionGuide` | dashboard state and widgets, session counters, permission explainers |
 | `AppVersion`, `Changelog`, `Markdown`, `WhatsNew` | version, bundled changelog, release notes, "What's new" |
 | `flavors/github/…/Updates`, `flavors/play/…/Updates` | GitHub Releases update check; no-op for Play |
+| `flavors/github/…/SelfInstall`, `flavors/github/AndroidManifest.xml` | In-app update: download, checksum and signing-key check, PackageInstaller session (GitHub build only) |
 | `Hp`, `BLog`, `LinkTest`, `TestPattern` | HostProtocol framing, logging, debug link test, synthetic frames |

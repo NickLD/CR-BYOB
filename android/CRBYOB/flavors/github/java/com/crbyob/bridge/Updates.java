@@ -24,7 +24,8 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * GitHub build only: checks GitHub Releases for a newer version and offers the APK download.
+ * GitHub build only: checks GitHub Releases for a newer version and offers to install it; the download and
+ * install happen inside the app ({@link SelfInstall}), with the release page as the fallback.
  * Automatic check at most once a day on app start; manual check from the "What's new" dialog.
  * Pre-releases are offered only to people already running one. The Play build has a no-op version of this
  * class (flavors/play): Play apps must update through Play.
@@ -40,6 +41,8 @@ final class Updates {
 
     static final class Release {
         String version, date, body, htmlUrl, apkUrl;
+        String apkSha256;   // from the asset's "digest" (GitHub lists one for assets uploaded since mid-2025), or null
+        long apkSize;       // bytes, 0 if unknown
         int code;
     }
 
@@ -47,7 +50,11 @@ final class Updates {
         return c.getSharedPreferences("bridge", Context.MODE_PRIVATE);
     }
 
-    /** "owner/name"; debug builds can point at another repo for testing (--es update_repo owner/name). */
+    /**
+     * "owner/name"; debug builds can point at another repo for testing (--es update_repo owner/name), or at a
+     * fake GitHub API with a full URL (--es update_repo http://127.0.0.1:8765 serves /releases; debug builds
+     * allow cleartext http for this).
+     */
     static String repo(Context c) {
         String o = BuildConfig.DEBUG ? prefs(c).getString(K_REPO, null) : null;
         return o != null && !o.isEmpty() ? o : BuildConfig.GITHUB_REPO;
@@ -92,8 +99,9 @@ final class Updates {
 
     /** Non-draft releases with a vX.Y.Z tag, newest first; pre-releases only if this build is one. */
     static List<Release> fetch(String repo) throws IOException, org.json.JSONException {
-        HttpURLConnection c = (HttpURLConnection) new URL(
-                "https://api.github.com/repos/" + repo + "/releases?per_page=30").openConnection();
+        String base = repo.startsWith("http://") || repo.startsWith("https://") ? repo.replaceAll("/+$", "")
+                : "https://api.github.com/repos/" + repo;
+        HttpURLConnection c = (HttpURLConnection) new URL(base + "/releases?per_page=30").openConnection();
         c.setConnectTimeout(10_000);
         c.setReadTimeout(10_000);
         c.setRequestProperty("Accept", "application/vnd.github+json");
@@ -136,7 +144,11 @@ final class Updates {
                 String name = as.optString("name", "");
                 if (!name.endsWith(".apk")) continue;
                 // prefer the github-flavor APK if a release ever carries more than one
-                if (r.apkUrl == null || name.contains("github")) r.apkUrl = as.optString("browser_download_url", null);
+                if (r.apkUrl == null || name.contains("github")) {
+                    r.apkUrl = as.optString("browser_download_url", null);
+                    r.apkSha256 = SelfInstall.parseDigest(as.optString("digest", null));
+                    r.apkSize = Math.max(0, as.optLong("size", 0));
+                }
             }
             out.add(r);
         }
@@ -164,12 +176,13 @@ final class Updates {
         for (Release r : releases)
             if (r.code > AppVersion.CODE && !r.body.trim().isEmpty()) notes.add(new Changelog.Entry(r.version, r.date, r.body));
 
-        String download = newest.apkUrl != null ? newest.apkUrl : newest.htmlUrl;
         AlertDialog.Builder b = new AlertDialog.Builder(a)
                 .setTitle("Update available")
                 .setView(WhatsNew.notesView(a, "CR-BYOB " + newest.version + " is available. You have "
                         + AppVersion.NAME + ".", notes))
-                .setPositiveButton("Download", (x, w) -> open(a, download))
+                .setPositiveButton(newest.apkUrl != null ? "Update" : "Download", (x, w) -> {
+                    if (newest.apkUrl != null) SelfInstall.start(a, newest); else open(a, newest.htmlUrl);
+                })
                 .setNegativeButton("Later", null);
         if (manual) b.setNeutralButton("Release page", (x, w) -> open(a, newest.htmlUrl));
         else b.setNeutralButton("Skip version", (x, w) -> p.edit().putInt(K_SKIP, newest.code).apply());
@@ -177,8 +190,8 @@ final class Updates {
         Widgets.showStyled(d);
     }
 
-    /** Opens the APK (or release page) in the browser; the browser downloads it and Android installs it over this one. */
-    private static void open(Activity a, String url) {
+    /** Opens the release page in the browser (no APK on the release, or the in-app install failed). */
+    static void open(Activity a, String url) {
         try {
             a.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
         } catch (Exception e) {

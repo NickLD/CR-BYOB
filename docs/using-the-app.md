@@ -108,7 +108,7 @@ From top to bottom:
   and upload/download link rates) and speed warnings.
 - **Experimental**: the scanner frame-rate override (above).
 - **Events**: recent events in plain words, with the raw log below.
-- **Version** at the bottom: tap for *What's new* (and *Check for updates* in GitHub builds); long-press to
+- **Version** at the bottom: tap *What's new* (*What's new / Check for app updates* in GitHub builds); long-press to
   copy your app version, phone and Android version for a bug report. GitHub builds also have a Ko-fi button
   under it.
 
@@ -170,9 +170,13 @@ arrives at ("Mirror: RGB 15 · IR 10 · 3D 15 fps").
 
 ## Updates
 
-GitHub builds check GitHub Releases once a day and offer new versions with their release notes; *Download*
-opens the APK in your browser. Google Play builds update through Play. After each update, *What's new*
-shows what changed.
+GitHub builds check GitHub Releases once a day and offer new versions with the release notes of every
+version since yours. *Update* downloads it inside the app and hands it to Android's installer. The first time,
+Android asks you to allow installs from CR-BYOB (*Allow from this source*); Google Play Protect may also ask to
+scan a version it hasn't seen (*More details* lets you install without scanning). Installing closes CR-BYOB, so
+the app asks first if a scan is streaming, and a notification reopens it afterwards. Google Play builds update
+through Play. On the first launch after any update, *What's new* shows the notes of every version since the
+one you had.
 
 ## Troubleshooting
 

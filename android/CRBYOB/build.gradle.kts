@@ -89,6 +89,7 @@ android {
         versionCode = appVersion.code
         versionName = appVersion.name
         buildConfigField("String", "GIT_COMMIT", "\"${appVersion.commit}\"")
+        manifestPlaceholders["cleartext"] = "false"
     }
 
     // github: sideloaded from GitHub Releases (self-update allowed).
@@ -115,6 +116,7 @@ android {
             assets.setSrcDirs(listOf("assets"))
         }
         getByName("github") {
+            manifest.srcFile("flavors/github/AndroidManifest.xml")   // merged over the main one: self-update bits
             java.setSrcDirs(listOf("flavors/github/java"))
             res.setSrcDirs(listOf("flavors/github/res"))
         }
@@ -144,6 +146,8 @@ android {
     }
 
     buildTypes {
+        // debug only: plain http, so a fake GitHub API on the PC can serve test updates (docs/building.md)
+        getByName("debug") { manifestPlaceholders["cleartext"] = "true" }
         getByName("release") {
             isMinifyEnabled = false
             if (releaseStore != null) signingConfig = signingConfigs.getByName("release")

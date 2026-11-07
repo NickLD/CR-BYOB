@@ -42,7 +42,7 @@ finds it over the network like the real thing.
   [frame-rate override](docs/using-the-app.md#scanner-frame-rate-override-experimental) gets 20 or 30 on a
   fast link, with nothing changed in Creality Scan.
 - **Live dashboard.** Scanner and power status, per-stream frame rates, link quality and session statistics.
-- **Update check** against GitHub Releases, with release notes after each update.
+- **Updates** from GitHub Releases, downloaded and installed inside the app, with release notes after each update.
 
 <p align="center">
   <img src="docs/photos/rig-in-hand.jpg" alt="Scanning a die grinder with a CR-Scan Otter and a phone running CR-BYOB, in a workshop" height="360">&nbsp;&nbsp;

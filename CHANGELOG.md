@@ -8,6 +8,22 @@ Format: one `## [X.Y.Z] - YYYY-MM-DD` section per release (newest first), with `
 for people using the app. Collect changes under `## [Unreleased]` and rename it to the version and date
 when tagging. A release build fails if its version has no dated section here.
 
+## [Unreleased]
+
+## [0.3.0] - 2026-11-07
+
+### Changed
+- Updates install from inside the app (GitHub build): Update downloads the new version with a progress bar
+  and hands it to Android's installer, instead of going through the browser. Android asks once to allow
+  installs from CR-BYOB. On Android 12 and later, updates after the first one may skip Android's confirm
+  screen (Google Play Protect may still ask to scan a version it hasn't seen).
+  The download is checked against GitHub's checksum and CR-BYOB's signing key before it installs. If a
+  scan is streaming, the app asks first, since installing closes it.
+- If an update doesn't install (the install permission was left off, it was canceled, or Android blocked it),
+  the app says why and offers the release page to download and install it yourself, or another try.
+- The version line at the bottom now reads "What's new / Check for app updates" in the GitHub build.
+- Softer wording above the donation button: "Avoided buying a Scan Bridge, and want to say thanks with a donation?"
+
 ## [0.2.0] - 2026-11-06
 
 ### Added

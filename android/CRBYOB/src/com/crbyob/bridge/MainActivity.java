@@ -886,14 +886,15 @@ public final class MainActivity extends Activity {
     }
 
     /**
-     * App version under the last card. Tap: release notes (and "Check for updates" in GitHub builds).
+     * App version under the last card. Tap: release notes (and "Check for updates" in GitHub builds, whose
+     * link says so).
      * Long-press copies a bug-report line (version, phone, Android).
      */
     private void buildFooter(LinearLayout root) {
         TextView v = text(12, SUB, false);
         android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder(AppVersion.display() + "  ·  ");
         int st = sb.length();
-        sb.append("What's new");
+        sb.append(Updates.SUPPORTED ? "What's new / Check for app updates" : "What's new");
         sb.setSpan(new android.text.style.ForegroundColorSpan(Widgets.BLUE), st, sb.length(),
                 android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         v.setText(sb);
@@ -907,7 +908,7 @@ public final class MainActivity extends Activity {
         View donate = Donate.footerButton(this);
         if (donate != null) {
             TextView ask = text(13, SUB, false);
-            ask.setText("Avoided buying a Scan Bridge? Say thanks with a donation.");
+            ask.setText("Avoided buying a Scan Bridge, and want to say thanks with a donation?");
             ask.setGravity(Gravity.CENTER_HORIZONTAL);
             ask.setPadding(0, dp(8), 0, 0);
             root.addView(ask, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
