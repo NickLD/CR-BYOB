@@ -95,8 +95,11 @@ Scan, change it, and open Creality Scan again (the bridge can keep running).
 From top to bottom:
 
 - **Status**: a light (grey off, amber ready, blue PC connected, pulsing green streaming, red problem), a
-  one-line status such as "Streaming to 192.168.49.224 via Wi-Fi Direct", and Start/Stop. Below: scanner
-  model, firmware and USB speed, then battery and power source.
+  one-line status such as "Streaming to 192.168.49.224 via Wi-Fi Direct", and `? Troubleshooting / Help`, which opens these docs
+  in the app at Troubleshooting. Warnings on the dashboard end in `How to fix ›`, which opens the matching
+  question. Below it, the Start/Stop button (a spinner while the bridge starts or stops), then the scanner's
+  model, serial, firmware and USB speed (shown before you tap Start too), then battery and power source. Start
+  stays off while the scanner is on USB 2 (see [The app says the scanner is on USB 2?](#scanner-is-on-usb-2)).
 - **Mirror** button and the auto-mirror and keep-screen-on switches (see Mirror viewer below).
 - **Link quality** and **Streams** (while a PC or the phone app is connected): frames sent vs captured per
   stream, Mbit/s and a 60 s graph. Link quality is estimated from delivery, because Android reports no
@@ -180,14 +183,109 @@ one you had.
 
 ## Troubleshooting
 
-- **Restart Creality Scan after restarting the bridge.** It reads the bridge's details once per session.
-- **Low frame rate.** With an Otter the bridge sends about 265 Mbit/s at full rate. Ethernet (Gigabit) fixes this for
-  good; otherwise use 5 GHz, keep the phone near the router or the PC, or use Wi-Fi Direct or *This phone
-  only*. On 2.4 GHz expect about 6 fps.
-- **Scanner disconnects.** Usually power: use a powered hub (the dashboard shows "on battery" in red).
-- **Bridge not found.** Check that the PC is on the network chosen under *Run streaming server on*, and that
-  Creality Scan isn't also seeing the scanner over USB on the same PC.
-- **Reporting a problem.** Long-press the version at the bottom of the dashboard to copy your app and phone
-  details, and open an [issue](https://github.com/NickLD/CR-BYOB/issues) (or a
-  [Device report](https://github.com/NickLD/CR-BYOB/issues/new?template=device-report.yml) for scanner or phone
-  results). Logs are in the dashboard under *Raw log*; passwords never appear in them.
+Tap a question to open it.
+
+<details>
+<summary><a id="scanner-is-on-usb-2"></a>The app says the scanner is on USB 2?</summary>
+
+The dashboard says `Can't start: scanner is on USB 2` when the scanner connected at USB 2 speed. The bridge
+needs USB 3: the scanner's streams don't fit in USB 2. Things to try, roughly in this order:
+
+- **Unplug the hub from the phone and plug it back in.** A USB-C plug that's slightly loose, or was seated at
+  an angle, often comes back as USB 2. Flipping the plug over can also help.
+- **With a powered hub, change the order you connect things.** Plug the hub into the phone and the scanner
+  into the hub first, then connect the hub's external power last. Some hubs only negotiate USB 3 in that order.
+- **Check that every part is USB 3:** the phone's port, the hub (look for `5 Gbps`, `10 Gbps` or `USB 3`), and
+  the cable between the phone and the hub. Many USB-C cables, including the ones that come with chargers,
+  carry only USB 2.
+- **Plug the scanner straight into the phone** (no hub) to tell whether the hub or the phone is the problem.
+
+The dashboard checks again each time the scanner is plugged in, so the button turns back to `Start bridge`
+within a second once it's on USB 3.
+
+</details>
+
+<details>
+<summary><a id="creality-scan-doesnt-find-the-bridge"></a>Creality Scan doesn't find the bridge?</summary>
+
+- **The PC needs a Wi-Fi adapter.** Creality Scan on the PC only searches for bridges when the PC has a Wi-Fi
+  adapter connected, even if the phone and the PC are both on Ethernet. A PC with only wired networking never
+  finds the bridge: add a USB Wi-Fi adapter.
+- **Same network.** The PC must be on the network chosen under `Run streaming server on`.
+- **Not also on USB.** Creality Scan must not also see the scanner plugged into the same PC.
+- **Restarted the bridge?** Restart Creality Scan too: it reads the bridge's details once per session.
+
+</details>
+
+<details>
+<summary><a id="low-frame-rate"></a>Low frame rate?</summary>
+
+With an Otter the bridge sends about 265 Mbit/s at the normal frame rate (`Stock`). `Boost` and `Max` need
+more: see [Scanner frame-rate override](#scanner-frame-rate-override-experimental).
+
+- **Signal and link rate both matter.** The dashboard's Wi-Fi line shows the signal (dBm, closer to 0 is
+  stronger) and the link rate (Mbit/s). A strong signal doesn't help if the link rate is low: the link can't
+  carry the streams. A high link rate doesn't help if the signal is weak: frames get lost and the video
+  stutters. You need both.
+- **2.4 GHz Wi-Fi almost always stutters.** Use 5 GHz (or 6 GHz), on the phone and the PC.
+- **Ethernet (Gigabit) fixes it for good.** Otherwise keep the phone near the router or the PC, or use Wi-Fi
+  Direct, or `This phone only` to scan on the phone itself.
+
+</details>
+
+<details>
+<summary><a id="scanner-keeps-disconnecting"></a>The scanner keeps disconnecting?</summary>
+
+Usually power: on the phone's battery alone the scanner can brown out and drop off USB. The dashboard warns `No external power: scanner may disconnect` while the phone runs on battery, and
+`Scanner lost power` after a drop.
+
+- **Use a powered USB-C hub** (power passthrough): the hub's power supply or a power bank feeds the scanner
+  and charges the phone.
+- **Check the power actually arrives:** the battery line under the scanner should say external power, not
+  `on battery`. If it doesn't, check the hub's power cable and supply.
+
+</details>
+
+<details>
+<summary><a id="wi-fi-direct-and-wi-fi-at-the-same-time"></a>Wi-Fi Direct is slow while the phone is also on Wi-Fi?</summary>
+
+The phone has one Wi-Fi radio. While it's also connected to a Wi-Fi network, Wi-Fi Direct shares that radio
+with it, and a weak or busy Wi-Fi link slows the streams down. The dashboard warns when this happens.
+
+- **Disconnect the phone from the Wi-Fi network** while you scan. The warning has a button that opens
+  Android's Wi-Fi settings. Leave Wi-Fi itself on: Wi-Fi Direct needs it.
+- **Or run the bridge on that Wi-Fi network instead** under `Run streaming server on`, if it's fast enough
+  (see [Low frame rate?](#low-frame-rate)).
+
+</details>
+
+<details>
+<summary><a id="ethernet-has-no-ip-address"></a>Ethernet is plugged in but has no IP address?</summary>
+
+Android sets up USB Ethernet by DHCP, so the cable has to go to a router or switch that hands out addresses.
+
+- **Check the cable goes to a router or switch.** A cable straight to the PC (no router) won't give the phone
+  an address.
+- **Turn Wi-Fi off for a few seconds.** Some phones don't start asking the Ethernet adapter for an address
+  while Wi-Fi is connected. Turn Wi-Fi off, wait until Ethernet gets an address, then turn Wi-Fi back on if you
+  need it.
+- **Unplug and replug the adapter** (or the hub) to try again.
+
+</details>
+
+<details>
+<summary><a id="scanner-model-warning"></a>The app warns about my scanner model?</summary>
+
+Not every scanner has been tested with the bridge (see [Supported devices](../README.md#supported-devices)).
+Untested ones are set up from a tested model of the same design and may work, but their streams can come out
+wrong. Try it, and file a
+[Device report](https://github.com/NickLD/CR-BYOB/issues/new?template=device-report.yml) whether it works or
+not: that's how scanners move from untested to supported.
+
+</details>
+
+**Still stuck?** Open an [issue](https://github.com/NickLD/CR-BYOB/issues): long-press the version at the
+bottom of the dashboard to copy your app and phone details for it. For whether a scanner or phone works, send a
+[Device report](https://github.com/NickLD/CR-BYOB/issues/new?template=device-report.yml) instead: from the app
+it opens with your scanner, phone and the session's frame rates filled in. Logs are in the dashboard under
+`RAW LOG`; passwords never appear in them.

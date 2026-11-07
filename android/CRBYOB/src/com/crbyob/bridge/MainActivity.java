@@ -61,7 +61,25 @@ public final class MainActivity extends Activity {
     private LinearLayout warnBox;
     private String warnKey = "";
     private PermissionGuide perms;
-    private Button startStop, mirrorBtn;
+    private Button mirrorBtn;
+    // Start/Stop: full width under the status, with a spinner while the bridge is still starting or stopping
+    private LinearLayout startStop;
+    private TextView ssText;
+    private android.widget.ProgressBar ssSpin;
+    private boolean ssWant;              // what the last tap asked for (true = running)
+    private int ssSentAt = -1;           // BridgeService.commands when tapped; -1 = nothing in flight
+    private long ssPendingUntil;         // bound on waiting for the service to pick the tap up
+    private final Runnable ssPoll = new Runnable() {
+        @Override
+        public void run() {
+            if (ssBusy()) {
+                renderStartStop();
+                h.postDelayed(this, 150);
+            } else {
+                refresh();               // settled: the whole dashboard at once, not on the next 1 s tick
+            }
+        }
+    };
     private String mirrorHost;
     private final MirrorWatch uiWatch = new MirrorWatch(false);
     private android.widget.Switch autoSwitch;   // used while the dashboard is visible and no bridge runs     // PC heard broadcasting "OrbbecRTCServer" (Mobile connection dialog open)
@@ -258,6 +276,7 @@ public final class MainActivity extends Activity {
         scroll.addView(root);
 
         buildHeader(root);
+        buildReportPrompt(root);
         buildActivity(root);
         root.removeView(linkCard);                                   // Link quality above Streams
         root.addView(linkCard, root.indexOfChild(streamsCard));
@@ -300,15 +319,16 @@ public final class MainActivity extends Activity {
         cl.topMargin = dp(6);
         col.addView(clientChip, cl);
         row.addView(col, weight(1));
-        startStop = button("Start");
-        startStop.setOnClickListener(v -> {
-            if (BridgeService.current() != null)
-                startService(new Intent(this, BridgeService.class).setAction(BridgeService.ACTION_STOP));
-            else perms.ensure(PermissionGuide.CAMERA, this::startBridge);   // explains Camera first if it's missing
-            h.postDelayed(this::refresh, 600);
-        });
-        row.addView(startStop);
+        TextView help = text(15, TEXT, true);            // the user docs, in the app, opened at Troubleshooting
+        help.setText("? Troubleshooting / Help");
+        help.setGravity(Gravity.CENTER);
+        help.setBackground(rounded(LINE, dp(18)));
+        help.setPadding(dp(14), 0, dp(14), 0);
+        help.setContentDescription("Help and troubleshooting");
+        help.setOnClickListener(v -> help(Docs.HELP_TROUBLESHOOTING));
+        row.addView(help, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(36)));
         c.addView(row);
+        buildStartStop(c);
         scanLine = text(13, TEXT, false);
         scanLine.setPadding(0, dp(8), 0, 0);
         c.addView(scanLine);
@@ -386,6 +406,39 @@ public final class MainActivity extends Activity {
         Runnable again = () -> h.postDelayed(this::refresh, 200);
         if ("perm:camera".equals(action)) perms.ensure(PermissionGuide.CAMERA, again);
         else if ("perm:notify".equals(action)) perms.ensure(PermissionGuide.NOTIFY, again);
+        else if (action.startsWith("doc:")) help(action.substring(4));
+        else if ("report".equals(action)) DeviceReport.open(this);
+    }
+
+    /** Opens the user guide at a Troubleshooting question (Docs.HELP_*), expanded and highlighted. */
+    private void help(String anchor) {
+        DocsActivity.open(this, Docs.HOME, anchor);
+    }
+
+    /**
+     * `text` followed by a link label ("How to fix ›") that the whole view opens: on a warning pill in bold white
+     * (blue would be unreadable on red), elsewhere in the link blue.
+     */
+    private CharSequence withLink(String text, String label, boolean onPill) {
+        android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder(text).append("  ");
+        int st = sb.length();
+        sb.append(label);
+        if (onPill) {
+            sb.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), st, sb.length(), 0);
+            sb.setSpan(new android.text.style.UnderlineSpan(), st, sb.length(), 0);
+        } else {
+            sb.setSpan(new android.text.style.ForegroundColorSpan(BLUE), st, sb.length(), 0);
+        }
+        return sb;
+    }
+
+    private void linkTo(TextView t, String anchor) {
+        if (anchor == null) {
+            t.setOnClickListener(null);
+            t.setClickable(false);
+        } else {
+            t.setOnClickListener(v -> help(anchor));
+        }
     }
 
     /** Rebuilds the warning pills only when the list changes; each {text, "red" | "amber"[, action]}. */
@@ -398,9 +451,12 @@ public final class MainActivity extends Activity {
         for (String[] w : warns) {
             boolean red = "red".equals(w[1]);
             TextView t = text(14, TEXT, red);
-            t.setText((red ? "" : "⚠  ") + w[0]);
+            String body = (red ? "" : "⚠  ") + w[0];
+            String link = w.length < 3 ? null : w[2].startsWith("doc:") ? "How to fix ›"
+                    : "report".equals(w[2]) ? "Tested it? Send a device report ›" : null;
+            t.setText(link != null ? withLink(body, link, true) : body);
             pill(t, red);
-            if (w.length > 2) {                       // actionable pill
+            if (w.length > 2) {                       // actionable pill: fix it, or open its troubleshooting
                 final String action = w[2];
                 t.setOnClickListener(v -> warnAction(action));
             }
@@ -573,11 +629,16 @@ public final class MainActivity extends Activity {
             sessDetails.addView(row);
         }
         sessCard.addView(sessDetails);
+        Button report = button("Send a device report");          // the session's numbers, pre-filled on GitHub
+        report.setOnClickListener(v -> DeviceReport.open(this));
+        LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rl.topMargin = dp(10);
+        sessCard.addView(report, rl);
     }
 
     private void refreshSession() {
         SessionStats ss = SessionStats.cur;
-        boolean have = BridgeService.current() != null || ss.stopMs > 0;
+        boolean have = BridgeService.current() != null || BridgeService.stopping || ss.stopMs > 0;
         show(sessCard, have);
         if (!have) return;
         boolean stopped = ss.stopMs > 0;
@@ -629,6 +690,7 @@ public final class MainActivity extends Activity {
         });
         c.addView(advGroup);
         advNote = text(14, TEXT, false);
+        linkTo(advNote, Docs.HELP_NETWORK);
         pill(advNote, false);
         advNote.setVisibility(View.GONE);
         c.addView(advNote, pillParams());
@@ -685,6 +747,7 @@ public final class MainActivity extends Activity {
         bl.topMargin = dp(10);
         p2pBox.addView(p2pDualBanner, bl);
         p2pDual = text(14, AMBER, true);
+        linkTo(p2pDual, Docs.HELP_DUAL);
         p2pDualBanner.addView(p2pDual);
         p2pDualBtn = button("Disconnect phone from Wi-Fi network");
         p2pDualBtn.setOnClickListener(v -> openWifiDisconnect());
@@ -712,6 +775,7 @@ public final class MainActivity extends Activity {
         ethBox = new LinearLayout(this);
         ethBox.setPadding(0, dp(10), 0, 0);
         ethLine = text(14, TEXT, false);
+        linkTo(ethLine, Docs.HELP_ETHERNET);
         pill(ethLine, false);
         ethBox.addView(ethLine, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         c.addView(ethBox);
@@ -903,6 +967,12 @@ public final class MainActivity extends Activity {
         v.setOnClickListener(x -> WhatsNew.showAll(this));
         v.setOnLongClickListener(x -> { copy("Version info", AppVersion.bugReportLine()); return true; });
         root.addView(v, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        TextView rep = text(13, BLUE, false);                  // works or not: either report helps the device lists
+        rep.setText("Tried a scanner or phone? Send a device report ›");
+        rep.setGravity(Gravity.CENTER_HORIZONTAL);
+        rep.setPadding(0, dp(8), 0, dp(4));
+        rep.setOnClickListener(x -> DeviceReport.open(this));
+        root.addView(rep, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         // Ko-fi button: GitHub builds only (null in the Play flavor).
         View donate = Donate.footerButton(this);
@@ -1036,6 +1106,99 @@ public final class MainActivity extends Activity {
         return false;
     }
 
+    // ------------------------------------------------------------------ "First scan go well?" (ReportPrompt)
+    private LinearLayout reportCard;
+    private TextView reportText;
+    private long lastStreamingAt;          // last render that saw the bridge streaming (0 = not while visible)
+    private String promptScanner;          // the scanner of the session, kept after the bridge stops
+    private boolean promptScannerVerified;
+    private List<String> listedPhones;
+    private boolean promptTest;            // debug: --ez report_prompt_test true shows the card now, as if unreported
+
+    private void buildReportPrompt(LinearLayout root) {
+        reportCard = card(root, null);
+        android.graphics.drawable.GradientDrawable bg = rounded(CARD, dp(16));
+        bg.setStroke(Math.max(1, dp(1.5f)), (BLUE & 0x00FFFFFF) | 0x99000000);
+        reportCard.setBackground(bg);
+        LinearLayout row = new LinearLayout(this);
+        TextView title = text(16, TEXT, true);
+        title.setText("First scan go well?");
+        row.addView(title, weight(1));
+        TextView close = text(18, SUB, false);
+        close.setText("\u2715");
+        close.setPadding(dp(12), 0, dp(4), 0);
+        close.setContentDescription("Dismiss");
+        close.setOnClickListener(v -> finishReportPrompt(false));
+        row.addView(close);
+        reportCard.addView(row);
+        reportText = text(14, TEXT, false);
+        reportText.setPadding(0, dp(6), 0, 0);
+        reportCard.addView(reportText);
+        reportCard.setOnClickListener(v -> finishReportPrompt(true));
+        reportCard.setVisibility(View.GONE);
+    }
+
+    /** Tapped (opens the report) or dismissed: either way it's answered and never shown again. */
+    private void finishReportPrompt(boolean report) {
+        getSharedPreferences("bridge", MODE_PRIVATE).edit().putBoolean(ReportPrompt.PREF_DONE, true).apply();
+        BLog.log("report_prompt_" + (report ? "tapped" : "dismissed"));
+        promptTest = false;
+        reportCard.setVisibility(View.GONE);
+        if (report) DeviceReport.open(this);
+    }
+
+    private List<String> listedPhones() {
+        if (listedPhones == null) {
+            String md = null;
+            try (java.io.InputStream in = getAssets().open(Docs.ASSET_ROOT + "docs/phones.md")) {
+                java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream();
+                byte[] buf = new byte[8192];
+                for (int n; (n = in.read(buf)) > 0; ) o.write(buf, 0, n);
+                md = new String(o.toByteArray(), java.nio.charset.StandardCharsets.UTF_8);
+            } catch (java.io.IOException ignored) {
+            }
+            listedPhones = ReportPrompt.listedPhones(md);
+        }
+        return listedPhones;
+    }
+
+    /** Shows the card once the first real scan has ended, if the phone or scanner has no report yet. */
+    private void updateReportPrompt(Dash.Snap s, boolean running) {
+        if (reportCard == null) return;
+        if (running && s.scanner && s.modelName != null) {      // remember the session's scanner past Stop
+            promptScanner = s.modelName.startsWith("PID ") ? s.scannerModel : s.modelName;
+            promptScannerVerified = "verified".equals(s.modelStatus);
+        } else if (!running && promptScanner == null && s.plugged && s.scannerModel != null) {
+            promptScanner = s.scannerModel;                      // forgotten (dashboard rebuilt after Stop): the
+            promptScannerVerified = "verified".equals(s.idleModelStatus);   // plugged-in scanner, by its USB ID
+        }
+        boolean streaming = running && s.hero == Dash.STREAMING;
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (streaming) lastStreamingAt = now;
+        boolean done = getSharedPreferences("bridge", MODE_PRIVATE).getBoolean(ReportPrompt.PREF_DONE, false);
+        String missing = null;
+        if (promptTest) {
+            missing = ReportPrompt.missing(false, ReportPrompt.phoneName(Build.MANUFACTURER, Build.MODEL),
+                    promptScanner != null ? promptScanner : s.scannerModel, false);
+        } else if (!done && ReportPrompt.scanEnded(SessionStats.cur.streamMs, streaming, lastStreamingAt, now)) {
+            boolean pretend = pretendUnreported();
+            missing = ReportPrompt.missing(!pretend && ReportPrompt.phoneListed(listedPhones(), Build.MANUFACTURER, Build.MODEL),
+                    ReportPrompt.phoneName(Build.MANUFACTURER, Build.MODEL), promptScanner, !pretend && promptScannerVerified);
+        }
+        boolean show = missing != null;
+        if (show) reportText.setText(ReportPrompt.message(missing));
+        if (show && reportCard.getVisibility() != View.VISIBLE) BLog.log("report_prompt_shown", "missing", missing);
+        show(reportCard, show);
+    }
+
+    /**
+     * Debug builds: act as if this phone and scanner had no compatibility report (the first-scan card and the
+     * unverified-scanner warning), to test them on a covered setup. --ez pretend_unreported true|false, persisted.
+     */
+    private boolean pretendUnreported() {
+        return BuildConfig.DEBUG && getSharedPreferences("bridge", MODE_PRIVATE).getBoolean("pretend_unreported", false);
+    }
+
     private void handleIntent(Intent i) {
         if (i == null) return;
         if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(i.getAction())) {
@@ -1056,6 +1219,11 @@ public final class MainActivity extends Activity {
             if (i.hasExtra("mirror_auto_ui")) e.putBoolean("mirror_auto_ui", i.getBooleanExtra("mirror_auto_ui", false));
             // --ez test_pattern true: synthetic frames when no scanner is attached, GVCP off (stall/takeover tests)
             if (i.hasExtra("test_pattern")) e.putBoolean("test_pattern", i.getBooleanExtra("test_pattern", false));
+            // --ez report_prompt_test true: show the "First scan go well?" card now (as if nothing were reported);
+            // --ez report_prompt_reset true: forget that it was answered
+            if (i.getBooleanExtra("report_prompt_reset", false)) e.remove(ReportPrompt.PREF_DONE);
+            if (i.getBooleanExtra("report_prompt_test", false)) promptTest = true;
+            if (i.hasExtra("pretend_unreported")) e.putBoolean("pretend_unreported", i.getBooleanExtra("pretend_unreported", false));
             e.apply();
             // --es update_repo owner/name points the GitHub update check elsewhere ("" resets), --ez update_check true runs it
             if (i.hasExtra("update_repo")) Updates.setRepoOverride(this, i.getStringExtra("update_repo"));
@@ -1108,10 +1276,95 @@ public final class MainActivity extends Activity {
         startForegroundService(s);
     }
 
+    private void buildStartStop(LinearLayout c) {
+        startStop = new LinearLayout(this);
+        startStop.setGravity(Gravity.CENTER);
+        startStop.setMinimumHeight(dp(52));
+        startStop.setPadding(dp(14), dp(6), dp(14), dp(6));
+        startStop.setClickable(true);
+        startStop.setFocusable(true);
+        ssSpin = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleSmall);
+        ssSpin.setIndeterminate(true);
+        ssSpin.setIndeterminateTintList(ColorStateList.valueOf(TEXT));
+        ssSpin.setVisibility(View.GONE);
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(dp(20), dp(20));
+        sl.rightMargin = dp(10);
+        startStop.addView(ssSpin, sl);
+        ssText = text(17, TEXT, true);
+        startStop.addView(ssText);
+        startStop.setOnClickListener(v -> {
+            if (ssBusy()) return;
+            if (BridgeService.current() == null && usb2Block(last)) return;
+            if (BridgeService.current() != null) {
+                ssPending(false);
+                startService(new Intent(this, BridgeService.class).setAction(BridgeService.ACTION_STOP));
+            } else {
+                perms.ensure(PermissionGuide.CAMERA, () -> {   // explains Camera first if it's missing
+                    ssPending(true);
+                    startBridge();
+                });
+            }
+        });
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(10);
+        c.addView(startStop, lp);
+        renderStartStop();
+    }
+
+    private void ssPending(boolean want) {
+        ssWant = want;
+        ssSentAt = BridgeService.commands;
+        ssPendingUntil = android.os.SystemClock.uptimeMillis() + 5000;
+        renderStartStop();
+        h.removeCallbacks(ssPoll);
+        h.postDelayed(ssPoll, 150);
+    }
+
+    /** Start or Stop still in flight: tapped but not picked up yet, or the service is still bringing it up/down. */
+    private boolean ssBusy() {
+        if (BridgeService.switching()) return true;
+        if (ssSentAt < 0) return false;
+        if (BridgeService.commands != ssSentAt || android.os.SystemClock.uptimeMillis() > ssPendingUntil) {
+            ssSentAt = -1;               // picked up (or a failed start already finished), or gave up waiting
+            return false;
+        }
+        return true;
+    }
+
+    private void renderStartStop() {
+        boolean running = BridgeService.current() != null;
+        boolean busy = ssBusy();
+        boolean usb2 = !running && !busy && usb2Block(last);
+        String label;
+        int bg;
+        if (usb2) {
+            label = "Can't start: scanner is on USB 2";
+            bg = WARN_AMBER;
+        } else if (busy) {
+            boolean stoppingNow = BridgeService.stopping || (!BridgeService.starting && !ssWant);
+            label = stoppingNow ? "Stopping…" : "Starting…";
+            bg = LINE;
+        } else if (running) {
+            label = "Stop bridge";
+            bg = WARN_RED;
+        } else {
+            label = "Start bridge";
+            bg = 0xFF1D4A2A;                 // dark green, like the mirror viewer's full-rate chips
+        }
+        ssText.setText(label);
+        ssText.setTextColor(usb2 ? AMBER : TEXT);
+        ssSpin.setVisibility(busy ? View.VISIBLE : View.GONE);
+        startStop.setEnabled(!busy && !usb2);
+        startStop.setAlpha(busy ? 0.75f : 1f);
+        startStop.setBackground(rounded(bg, dp(12)));
+        startStop.setContentDescription(label);
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
         h.post(tick);
+        if (ssBusy()) h.post(ssPoll);
         if (BridgeService.current() == null) uiWatch.start();   // readiness for the Mirror button even with the bridge off
     }
 
@@ -1119,6 +1372,7 @@ public final class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         h.removeCallbacks(tick);
+        h.removeCallbacks(ssPoll);
         uiWatch.stop();
     }
 
@@ -1237,6 +1491,7 @@ public final class MainActivity extends Activity {
         s.fpsMode = savedFpsMode();
         s.p2pWanted = getSharedPreferences("bridge", MODE_PRIVATE).getBoolean("p2p", false);
         s.advertise = Bridge.resolveAdvertise(s.advertiseSaved, s.p2pWanted, Bridge.networksUp());
+        Dash.sampleScannerIdle(this, s);
         return s;
     }
 
@@ -1248,6 +1503,32 @@ public final class MainActivity extends Activity {
 
     private void refresh() {
         render(true);
+    }
+
+    /**
+     * Bridge off and the plugged-in scanner's descriptors say USB 2: Start stays disabled. USB 3 is required (the
+     * streams need more than USB 2 carries), and a USB 3 device at SuperSpeed always reports USB 3, so this
+     * doesn't misfire on a good link. A running bridge isn't stopped if the link drops; it shows the warning instead.
+     */
+    static boolean usb2Block(Dash.Snap s) {
+        return s != null && !s.scanner && s.plugProbed && !s.usbSuper;
+    }
+
+    /** "CR-Scan Otter · SN BCA… · fw 1.2.3 · USB 3", or what's missing in plain words. */
+    static String scannerLine(Dash.Snap s, boolean running) {
+        if (s.scanner || (!running && s.plugProbed)) {
+            StringBuilder t = new StringBuilder(s.scannerModel);
+            if (s.scannerSn != null && !s.scannerSn.isEmpty()) t.append(" · SN ").append(s.scannerSn);
+            if (s.scannerFw != null && !s.scannerFw.isEmpty()) t.append(" · fw ").append(s.scannerFw);
+            if (s.usbSuper) return t.append(" · USB 3").toString();
+            return t.append(running ? " · USB 2 (too slow)"
+                    : " · connected at USB 2 speed, which is too slow. Use a USB 3 cable, port and hub.").toString();
+        }
+        if (!running) return s.plugged ? s.scannerModel + " plugged in · Android asks for access at Start"
+                : "No scanner plugged in · you can start now and plug it in later";
+        if ("Not connected".equals(s.scannerState)) return "No scanner plugged in";
+        if (s.scannerState != null && s.scannerState.startsWith("Attached")) return "Scanner plugged in · waiting for USB access (tap OK on Android's prompt)";
+        return "Scanner: " + s.scannerState;
     }
 
     /**
@@ -1278,7 +1559,9 @@ public final class MainActivity extends Activity {
             s = idleSnap;
         }
         last = s;
+        DeviceReport.lastSnap = s;
         boolean running = b != null;
+        updateReportPrompt(s, running);
         applyKeepAwake(running);               // follows Start/Stop (refresh runs every second while visible)
 
         // ---- header: status + scanner + power
@@ -1287,7 +1570,7 @@ public final class MainActivity extends Activity {
         String sub = running ? s.heroSub : "Tap Start to advertise the scanner";
         heroSub.setText(sub);
         show(heroSub, sub != null && !sub.isEmpty());
-        startStop.setText(running ? "Stop" : "Start");
+        renderStartStop();
         boolean pcOn = running && (s.hero == Dash.PC || s.hero == Dash.STREAMING);
         // Readiness = the PC's UDP 57301 broadcast (only while its "Mobile connection" dialog is open and no
         // phone is attached). Never probe TCP 57308: the PC treats any accept as a phone connecting.
@@ -1312,9 +1595,20 @@ public final class MainActivity extends Activity {
             mirrorBtn.setAlpha(0.45f);     // still tappable: the viewer has a manual "PC…" for networks without broadcasts
         }
         mirrorBtn.setEnabled(true);
-        if (s.scanner) scanLine.setText(s.scannerModel + " · SN " + s.scannerSn + " · fw " + s.scannerFw + " · " + (s.usbSuper ? "USB 3" : "USB 2 (too slow)"));
-        else scanLine.setText(running ? "Scanner: " + s.scannerState : "Scanner: bridge off");
-        scanLine.setTextColor(s.scanner && !s.usbSuper ? AMBER : TEXT);
+        if (!running && usb2Block(s)) {                // link to the USB 2 fixes; the whole line is the tap target
+            android.text.SpannableStringBuilder t = new android.text.SpannableStringBuilder(scannerLine(s, false)).append(' ');
+            int st = t.length();
+            t.append("Already on USB 3? More fixes ›");
+            t.setSpan(new android.text.style.ForegroundColorSpan(BLUE), st, t.length(), 0);
+            scanLine.setText(t);
+            scanLine.setOnClickListener(v -> help(Docs.HELP_USB2));
+        } else {
+            scanLine.setText(scannerLine(s, running));
+            scanLine.setOnClickListener(null);
+            scanLine.setClickable(false);
+        }
+        boolean details = s.scanner || (!running && s.plugProbed);
+        scanLine.setTextColor(details && !s.usbSuper ? AMBER : details || s.plugged ? TEXT : SUB);
         powerLine.setText(s.battery >= 0 ? "Battery " + s.battery + "% · " + (s.powered ? s.powerSource : "on battery") : "");
         List<String[]> warns = new ArrayList<>();
         // missing permissions: tap opens the explanation card (or Settings if Android won't prompt again)
@@ -1323,12 +1617,14 @@ public final class MainActivity extends Activity {
             warns.add(new String[]{"Camera permission is off, so CR-BYOB can't open the scanner (it's a USB camera). Tap to fix.", "red", "perm:camera"});
         if (askable && running && perms.seen(PermissionGuide.NOTIFY) && !perms.granted(PermissionGuide.NOTIFY))
             warns.add(new String[]{"Notifications are off: the bridge's status and Stop button are hidden. Tap to fix.", "amber", "perm:notify"});
-        if (running && s.brownOut) warns.add(new String[]{"Scanner lost power while the phone was on battery: use a powered USB-C hub", "red"});
-        else if (running && !s.powered && s.battery >= 0) warns.add(new String[]{"No external power: scanner may disconnect. Use a powered hub.", "red"});
-        if (s.scanner && s.modelStatus != null && !"verified".equals(s.modelStatus))
-            warns.add(new String[]{s.modelName + " support is " + s.modelStatus + " (not tested with this bridge): streams may be wrong.", "amber"});
+        if (running && s.brownOut) warns.add(new String[]{"Scanner lost power while the phone was on battery: use a powered USB-C hub", "red", "doc:" + Docs.HELP_POWER});
+        else if (running && !s.powered && s.battery >= 0) warns.add(new String[]{"No external power: scanner may disconnect. Use a powered hub.", "red", "doc:" + Docs.HELP_POWER});
+        String modelStatus = pretendUnreported() && s.scanner ? "unverified" : s.modelStatus;
+        if (s.scanner && modelStatus != null && !"verified".equals(modelStatus))
+            warns.add(new String[]{s.modelName + " support is " + modelStatus + " (not tested with this bridge): streams may be wrong.", "amber", "report"});   // the reports it needs
         // Wi-Fi speed warnings, bridge on or off; each only matters for the network the server runs on
-        for (String[] w : Dash.staWarnings(s)) if (w[1].equals(s.advertise)) warns.add(new String[]{w[0], "amber"});
+        for (String[] w : Dash.staWarnings(s)) if (w[1].equals(s.advertise))
+            warns.add(new String[]{w[0], "amber", "doc:" + ("p2p".equals(w[1]) ? Docs.HELP_DUAL : Docs.HELP_SLOW)});
         setWarnings(warns);
 
         // ---- streams + link only while a PC is connected or streaming
@@ -1383,7 +1679,7 @@ public final class MainActivity extends Activity {
         if (hdr) setClientChip(clientChip, s);
         show(p2pDualBanner, p2pOn && running && s.staConnected);
         if (p2pOn && s.staConnected) {
-            p2pDual.setText("⚠  " + dualWarning(s.staSsid));
+            p2pDual.setText(withLink("⚠  " + dualWarning(s.staSsid), "How to fix ›", false));
             p2pDualBtn.setText("Disconnect phone from " + s.staSsid);
         }
         show(wifiBox, s.staConnected);
@@ -1396,8 +1692,10 @@ public final class MainActivity extends Activity {
         // a working adapter is listed (with its IP) in the radio list; this line only explains a missing IP
         show(ethBox, s.ethIp == null && s.ethNoIp != null);
         if (s.ethIp == null && s.ethNoIp != null) {
-            ethLine.setText("⚠  Ethernet (" + s.ethNoIp + ") is plugged in but has no IP address yet. "
-                    + "Check the cable goes to a router or switch with DHCP, or unplug and replug the adapter.");
+            ethLine.setText(withLink("⚠  Ethernet (" + s.ethNoIp + ") is plugged in but has no IP address yet. "
+                    + "Check the cable goes to a router or switch with DHCP, turn Wi-Fi off for a few seconds, "
+                    + "or unplug and replug the adapter.",
+                    "How to fix ›", true));
         }
         refreshAdvertise(s, p2pOn);
         refreshFps(s);
@@ -1455,9 +1753,12 @@ public final class MainActivity extends Activity {
                 + String.format(Locale.US, "%.2f GB", s.totalBytes / 1e9) + " sent");
         linkBars.set(Math.max(0, s.linkScore), scoreColor(s.linkScore));
         linkWord.setText(s.linkScore >= 0 ? s.linkWord : "No stream yet");
-        linkDetail.setText(s.linkScore >= 0 ? s.linkDetail
+        boolean weak = s.linkScore >= 0 && s.linkScore <= 2;          // No signal, Poor, Marginal
+        String detail = s.linkScore >= 0 ? s.linkDetail
                 : "Estimated from delivery (sent vs captured frames, drops, decimation) once streaming starts. "
-                + "Android gives no per-client signal for a Wi-Fi Direct group owner.");
+                + "Android gives no per-client signal for a Wi-Fi Direct group owner.";
+        linkDetail.setText(weak ? withLink(detail, "How to improve ›", false) : detail);
+        linkTo(linkDetail, weak ? Docs.HELP_SLOW : null);
     }
 
     /** Radio buttons built from the interfaces that are up (one network only); rebuilt only when the set changes. */
@@ -1473,8 +1774,9 @@ public final class MainActivity extends Activity {
         // saved network down: say what is used instead (it switches back by itself)
         boolean fb = !s.advertiseSaved.isEmpty() && !s.advertiseSaved.equals(s.advertise);
         show(advNote, fb);
-        if (fb) advNote.setText("⚠  " + netWord(s.advertiseSaved, s) + " isn't connected, so the bridge will start on "
-                + netWord(s.advertise, s) + ". Connect " + netWord(s.advertiseSaved, s) + " before starting to use it.");
+        if (fb) advNote.setText(withLink("⚠  " + netWord(s.advertiseSaved, s) + " isn't connected, so the bridge will start on "
+                + netWord(s.advertise, s) + ". Connect " + netWord(s.advertiseSaved, s) + " before starting to use it.",
+                "About networks ›", true));
         boolean locked = BridgeService.current() != null;
         advTitle.setText(locked ? "Streaming server runs on (stop the bridge to change)" : "Run streaming server on");
         if (locked) show(advNote, false);     // no switching while running
