@@ -34,8 +34,18 @@ public final class BridgeService extends Service {
     private final Handler main = new Handler(Looper.getMainLooper());
     private boolean receiverRegistered;
 
+    /** Start in progress (Bridge.start still running) / Stop in progress (Bridge.stop or teardown still running). */
+    static volatile boolean starting, stopping;
+    /** Start/Stop commands handled so far: the dashboard knows its tap was picked up once this moves. */
+    static volatile int commands;
+
     public static Bridge current() {
         return bridge;
+    }
+
+    /** True while Start or Stop is still finishing, so the dashboard can show a spinner instead of a dead button. */
+    static boolean switching() {
+        return starting || stopping;
     }
 
     private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
@@ -79,17 +89,45 @@ public final class BridgeService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent != null ? intent.getAction() : ACTION_START;
+        commands++;                              // main thread only; the flags below change in this same message
         if (ACTION_STOP.equals(action)) {
-            stopForeground(true);
-            stopSelf();
+            // Stop the bridge on a worker thread, not in onDestroy: joining it there blocked the main thread (and so
+            // the whole UI) for as long as the teardown took. The service goes away once the bridge is down.
+            final Bridge b = bridge;
+            bridge = null;                       // the UI and the USB receiver see "off" right away
+            if (b == null) {
+                if (!stopping) { stopForeground(true); stopSelf(); }
+                return START_NOT_STICKY;
+            }
+            stopping = true;
+            final java.util.concurrent.atomic.AtomicBoolean done = new java.util.concurrent.atomic.AtomicBoolean();
+            final Runnable finish = () -> {
+                if (done.compareAndSet(false, true)) { stopForeground(true); stopSelf(); }   // onDestroy clears `stopping`
+            };
+            new Thread(() -> {
+                try {
+                    b.stop();
+                } finally {
+                    main.post(finish);
+                }
+            }, "bridge-stop").start();
+            main.postDelayed(() -> {             // same 3 s cap the old join had, so a stuck teardown can't hang Stop
+                if (!done.get()) BLog.log("bridge_stop_slow", "waited_ms", 3000);
+                finish.run();
+            }, 3000);
             return START_NOT_STICKY;
         }
-        goForeground();
+        goForeground();                          // first: startForegroundService() requires it even for an ignored Start
+        if (stopping) {                          // the button is disabled while stopping; ignore a stray Start
+            BLog.log("start_ignored", "why", "stop in progress");
+            return START_NOT_STICKY;
+        }
         if (bridge == null) {
             acquireLocks();
             registerUsb();
             Bridge b = new Bridge(this);
             bridge = b;
+            starting = true;
             new Thread(() -> {
                 try {
                     b.start();
@@ -97,6 +135,8 @@ public final class BridgeService extends Service {
                     // Bridge.start already stopped what it started and put the reason in the dashboard's events
                     BLog.log("bridge_start_failed", "err", String.valueOf(e));
                     main.post(() -> { stopForeground(true); stopSelf(); });
+                } finally {
+                    starting = false;
                 }
             }, "bridge-start").start();
         } else {
@@ -199,6 +239,7 @@ public final class BridgeService extends Service {
         if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         BLog.log("service_destroyed");
+        stopping = false;
         super.onDestroy();
     }
 

@@ -1245,6 +1245,7 @@ public final class MirrorActivity extends Activity implements MirrorSession.Ui {
         pWarn.setBackground(rounded(0xFF5A1D1D, dp(6)));
         pWarn.setPadding(dp(8), dp(3), dp(8), dp(3));
         pWarn.setVisibility(View.GONE);
+        pWarn.setOnClickListener(v -> DocsActivity.open(this, Docs.HOME, Docs.HELP_POWER));   // the power question
         LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         wl.topMargin = dp(4);
         c.addView(pWarn, wl);
@@ -1313,17 +1314,14 @@ public final class MirrorActivity extends Activity implements MirrorSession.Ui {
             link.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), st, link.length(), 0);
             link.append(String.format(Locale.US, " (%.1f drops/s)", s.linkDropsPerSec));
         }
-        if (s.p2pWanted && s.p2pFreq > 0)
-            link.append(link.length() == 0 ? "" : " · ").append("ch ").append(String.valueOf(Dash.channel(s.p2pFreq)));
         pLink.setText(link);
         pLink.setVisibility(link.length() == 0 ? View.GONE : View.VISIBLE);   // no blank row before the first score
         String sc = s.scanner ? s.scannerModel + " · fw " + s.scannerFw + " · " + (s.usbSuper ? "USB 3" : "USB 2") : "Scanner: " + s.scannerState;
-        if (s.battery >= 0) sc += " · " + s.battery + "%" + (s.powered ? "" : " battery");
         pScanner.setText(sc);
         pScanner.setVisibility(View.VISIBLE);
         String warn = s.brownOut ? "Scanner lost power: use a powered USB-C hub"
                 : !s.powered && s.battery >= 0 ? "No external power: scanner may disconnect" : null;
-        pWarn.setText(warn != null ? warn : "");
+        pWarn.setText(warn != null ? warn + "  ·  How to fix ›" : "");
         pWarn.setVisibility(warn != null ? View.VISIBLE : View.GONE);
     }
 }

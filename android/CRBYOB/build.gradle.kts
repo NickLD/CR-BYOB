@@ -1,4 +1,10 @@
 import java.util.Properties
+import java.awt.Color
+import java.awt.Image
+import java.awt.image.BufferedImage
+import javax.imageio.IIOImage
+import javax.imageio.ImageIO
+import javax.imageio.ImageWriteParam
 
 plugins {
     id("com.android.application")
@@ -89,6 +95,8 @@ android {
         versionCode = appVersion.code
         versionName = appVersion.name
         buildConfigField("String", "GIT_COMMIT", "\"${appVersion.commit}\"")
+        // both flavors: links to the docs (the github flavor also uses crbyob.githubRepo for its update check)
+        buildConfigField("String", "REPO_URL", "\"https://github.com/${providers.gradleProperty("crbyob.githubRepo").get()}\"")
         manifestPlaceholders["cleartext"] = "false"
     }
 
@@ -181,6 +189,10 @@ abstract class BundleSharedAssets : DefaultTask() {
     @get:InputFile abstract val mirrorProtocol: RegularFileProperty
     @get:InputFile abstract val changelog: RegularFileProperty
     @get:Input abstract val releaseVersion: Property<String>   // "" for dev builds
+    // User docs read in the app (DocsActivity): repo paths, kept in step with Docs.BUNDLED (DocsTest checks)
+    @get:Input abstract val bundledDocs: ListProperty<String>
+    @get:InputFile abstract val readme: RegularFileProperty       // repo root README.md (also fixes the root)
+    @get:InputDirectory abstract val docsDir: DirectoryProperty    // docs/ (the .md files and their images)
     @get:OutputDirectory abstract val outputDir: DirectoryProperty
 
     @TaskAction
@@ -213,6 +225,52 @@ abstract class BundleSharedAssets : DefaultTask() {
                 throw GradleException("CHANGELOG.md needs a '## [$version] - YYYY-MM-DD' section (with the release date) for v$version")
         }
         log.copyTo(File(out, "CHANGELOG.md"))
+
+        // docs -> assets/doc/<repo path>, with every local image they show. Images wider than a phone screen
+        // (1080 px) or over 150 KB are scaled to 1080 px wide and stored as JPEG under the same name (BitmapFactory
+        // reads the content, not the extension): ~3 MB of PNG screenshots become ~1.4 MB.
+        val root = readme.get().asFile.parentFile
+        val docOut = File(out, "doc")
+        val imgTag = Regex("""<img\s[^>]*src="([^"]+)"""", RegexOption.IGNORE_CASE)
+        val mdImg = Regex("""!\[[^\]]*\]\(([^)\s]+)\)""")
+        val images = sortedSetOf<String>()
+        for (rel in bundledDocs.get()) {
+            val src = File(root, rel)
+            if (!src.isFile) throw GradleException("bundled doc $rel is missing")
+            src.copyTo(File(docOut, rel))
+            val text = src.readText()
+            for (m in imgTag.findAll(text) + mdImg.findAll(text)) {
+                val href = m.groupValues[1]
+                if (Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:").containsMatchIn(href)) continue   // remote (badges)
+                val f = File(src.parentFile, href).canonicalFile
+                if (!f.isFile) throw GradleException("$rel shows $href, which doesn't exist")
+                images += f.relativeTo(root.canonicalFile).invariantSeparatorsPath
+            }
+        }
+        for (rel in images) {
+            val src = File(root, rel)
+            val dst = File(docOut, rel)
+            dst.parentFile.mkdirs()
+            val img = ImageIO.read(src) ?: throw GradleException("can't read image $rel")
+            if (img.width <= 1080 && src.length() <= 150_000) { src.copyTo(dst); continue }
+            val w = minOf(img.width, 1080)
+            val h = Math.round(img.height * w.toDouble() / img.width).toInt()
+            val rgb = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
+            val g = rgb.createGraphics()
+            g.color = Color(0x0E, 0x11, 0x16)                 // the app's background under any alpha
+            g.fillRect(0, 0, w, h)
+            g.drawImage(img.getScaledInstance(w, h, Image.SCALE_AREA_AVERAGING), 0, 0, null)
+            g.dispose()
+            val writer = ImageIO.getImageWritersByFormatName("jpeg").next()
+            val param = writer.defaultWriteParam
+            param.compressionMode = ImageWriteParam.MODE_EXPLICIT
+            param.compressionQuality = 0.8f
+            ImageIO.createImageOutputStream(dst).use { ios ->
+                writer.output = ios
+                writer.write(null, IIOImage(rgb, null, null), param)
+            }
+            writer.dispose()
+        }
     }
 }
 
@@ -220,6 +278,9 @@ val bundleSharedAssets = tasks.register<BundleSharedAssets>("bundleSharedAssets"
     scannerModels.set(rootProject.file("../models/scanners.json"))
     mirrorProtocol.set(rootProject.file("../models/mirror-protocol.json"))
     changelog.set(rootProject.file("../CHANGELOG.md"))
+    bundledDocs.set(listOf("README.md", "docs/README.md", "docs/using-the-app.md", "docs/phones.md"))
+    readme.set(rootProject.file("../README.md"))
+    docsDir.set(rootProject.file("../docs"))
     releaseVersion.set(if (appVersion.name.contains("-dev")) "" else appVersion.name)
     outputDir.set(layout.buildDirectory.dir("generated/sharedAssets"))
 }

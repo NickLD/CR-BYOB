@@ -77,6 +77,8 @@ final class Dash {
         String ethName, ethIp, lanIp;
         String ethNoIp;          // wired adapter with link up but no IPv4 (DHCP not done / failed)
         boolean scanner;
+        boolean plugged, plugProbed;
+        String idleModelStatus;         // bridge off: the plugged-in scanner's scanners.json status (sampleScannerIdle)    // bridge off: a scanner is on USB / its descriptors were read (sampleScannerIdle)
         String scannerState, scannerModel, scannerSn, scannerFw, usbLink;
         boolean usbSuper;
         boolean powered;
@@ -237,6 +239,73 @@ final class Dash {
 
     /** Connected Wi-Fi (STA): SSID, band, signal. Also used by the UI while the bridge is off. */
     @SuppressWarnings("deprecation")
+    /** SuperSpeed if a video endpoint takes 1024-byte packets or the device reports USB 3. */
+    static boolean usbSuper(UsbDesc d) {
+        int mps = 0;
+        for (UsbDesc.Vs vs : d.vss.values()) mps = Math.max(mps, vs.maxPacket);
+        return mps >= 1024 || d.bcdUsb >= 0x0300;
+    }
+
+    /** What sampleScannerIdle learned about the plugged-in scanner, kept per device so it's read once per plug-in. */
+    private static final class Plug {
+        String key, model, status, sn;
+        boolean probed, usbSuper;
+    }
+    private static volatile Plug plug;
+
+    /**
+     * Bridge off: which scanner is plugged in, without starting the bridge. Android lists USB devices without
+     * opening them, so the model (from its product ID) is always known. If USB access was already granted, the
+     * descriptors are read once (open, read, close: no claim, no scanner protocol) for the serial and USB 3 vs 2.
+     * The firmware version needs the scanner protocol, so it's the one saved the last time this serial was opened.
+     */
+    static void sampleScannerIdle(Context ctx, Snap s) {
+        android.hardware.usb.UsbManager usb = (android.hardware.usb.UsbManager) ctx.getSystemService(Context.USB_SERVICE);
+        UsbDevice d = null;
+        if (usb != null) for (UsbDevice x : usb.getDeviceList().values()) if (Otter.isOrbbec(x)) { d = x; break; }
+        if (d == null) {
+            plug = null;
+            return;
+        }
+        String key = d.getDeviceName() + "#" + d.getDeviceId();
+        Plug p = plug;
+        if (p == null || !p.key.equals(key)) {
+            p = new Plug();
+            p.key = key;
+            ScannerModel m = ScannerModel.forPid(ScannerModel.loadDocument(ctx, ctx.getFilesDir()), d.getProductId());
+            p.model = m.name;
+            p.status = m.status;
+            plug = p;
+        }
+        if (!p.probed && usb.hasPermission(d)) {
+            android.hardware.usb.UsbDeviceConnection c = null;
+            try {
+                c = usb.openDevice(d);
+                byte[] raw = c != null ? c.getRawDescriptors() : null;
+                if (raw != null) {
+                    p.usbSuper = usbSuper(UsbDesc.parse(raw));
+                    String sn = null;
+                    try { sn = d.getSerialNumber(); } catch (Exception ignored) { }
+                    if (sn == null) sn = c.getSerial();
+                    p.sn = sn;
+                    p.probed = true;
+                }
+            } catch (Exception e) {
+                BLog.log("usb_idle_probe_failed", "err", String.valueOf(e));
+            } finally {
+                if (c != null) c.close();
+            }
+        }
+        s.plugged = true;
+        s.plugProbed = p.probed;
+        s.scannerModel = p.model;
+        s.idleModelStatus = p.status;
+        s.scannerSn = p.sn;
+        s.usbSuper = p.usbSuper;
+        android.content.SharedPreferences prefs = ctx.getSharedPreferences("bridge", Context.MODE_PRIVATE);
+        if (p.sn != null && !p.sn.isEmpty() && p.sn.equals(prefs.getString("sub_sn", null))) s.scannerFw = prefs.getString("sub_fw", null);
+    }
+
     static void sampleWifi(Context ctx, Snap s) {
         WifiManager wm = (WifiManager) ctx.getSystemService(Context.WIFI_SERVICE);
         WifiInfo wi = wm.getConnectionInfo();
@@ -442,13 +511,12 @@ final class Dash {
             s.scannerModel = o.versionName != null ? o.versionName : "CR-Scan Otter";
             s.scannerSn = o.usbSerial.isEmpty() ? o.versionSn : o.usbSerial;
             s.scannerFw = o.fwVersion;
-            int mps = 0;
-            for (UsbDesc.Vs vs : o.desc.vss.values()) mps = Math.max(mps, vs.maxPacket);
-            s.usbSuper = mps >= 1024 || o.desc.bcdUsb >= 0x0300;
+            s.usbSuper = usbSuper(o.desc);
             s.usbLink = s.usbSuper ? "USB 3 SuperSpeed (5 Gbit/s)" : "USB 2 High-Speed (480 Mbit/s): color stalls, use a USB 3 cable/hub";
         } else {
             UsbDevice d = b.findDevice();
-            s.scannerState = d == null ? "Not connected" : "Attached, waiting for USB permission";
+            s.scannerState = d == null ? "Not connected"
+                    : ((android.hardware.usb.UsbManager) b.ctx.getSystemService(Context.USB_SERVICE)).hasPermission(d) ? "Connecting…" : "Attached, waiting for USB permission";
         }
         Intent bat = b.ctx.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
         if (bat != null) {

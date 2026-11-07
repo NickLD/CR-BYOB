@@ -23,7 +23,22 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Android 9+: UsbManager only grants USB video-class devices to apps holding CAMERA -->
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-feature android:name="android.hardware.camera" android:required="false" /> 
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!-- Android 11+: see the apps that open links. Any https page: the browsers (docs links go to the default
+         one, DocsActivity.openInBrowser). github.com: also the GitHub app (the device report offers both). -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" android:host="github.com" />
+        </intent>
+    </queries>
 
     <application
         android:label="CR-BYOB"
@@ -49,6 +64,12 @@
                 android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
                 android:resource="@xml/device_filter" />
         </activity>
+
+        <!-- User docs bundled in the app (README.md, docs/*.md), see Docs / DocsActivity -->
+        <activity
+            android:name=".DocsActivity"
+            android:exported="false"
+            android:label="Help" />
 
         <!-- Mirror viewer (Creality Scan's RGB / IR / 3D views over WebRTC in a WebView) -->
         <activity

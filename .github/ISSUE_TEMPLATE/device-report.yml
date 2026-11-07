@@ -23,6 +23,8 @@ body:
         - CR-Scan Ferret Pro
         - Sermoon X1
         - Sermoon S1
+        - Sermoon P1
+        - Sermoon P1 Lite
         - Creality Pika
         - M1 Ultra
         - Other (say which below)
@@ -37,7 +39,7 @@ body:
     id: app_info
     attributes:
       label: App, phone and Android version
-      description: Long-press the version at the bottom of the CR-BYOB dashboard and paste the copied line here.
+      description: Filled in when you open this form from the app (Send a device report). Otherwise long-press the version at the bottom of the CR-BYOB dashboard and paste the copied line here.
       placeholder: "CR-BYOB 0.1.0 (10099, github, abc1234) · Google Pixel 10 Pro XL · Android 16 (API 36)"
     validations:
       required: true
@@ -47,7 +49,7 @@ body:
       label: Network
       options:
         - Wi-Fi Direct
-        - Wi-Fi (home network)
+        - Wi-Fi
         - Ethernet
         - This phone only (CrealityScan mobile app)
     validations:

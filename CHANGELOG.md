@@ -10,6 +10,38 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-11-07
+
+### Added
+- Help: "? Troubleshooting / Help" on the dashboard opens the user guide in the app at Troubleshooting. It's
+  the same guide as on GitHub, with screenshots and photos, for the installed version and without a
+  connection. Troubleshooting is a list of questions that open with a tap, and "View on GitHub" opens the
+  page in the browser.
+- "Send a device report" (in Session stats and at the bottom of the dashboard) shows the whole report first,
+  with the scanner, firmware, phone, app version, network and this session's frame rates filled in, for you
+  to add the result and what you saw. It then opens in the GitHub app or your browser, your pick, where you
+  submit it. The scanner's serial number, Wi-Fi network names, IP addresses and the log are never included.
+- After your first real scan (a minute or more of streaming), if there's no compatibility report yet for your
+  phone or scanner, the dashboard asks once whether it went well and offers to send one.
+- Warnings on the dashboard and in the mirror viewer (power, USB 2, slow or 2.4 GHz Wi-Fi, Wi-Fi Direct
+  sharing the radio, Ethernet without an address, weak link) end in "How to fix", which opens the matching
+  question in the guide. The untested-scanner warning asks "Tested it? Send a device report" instead.
+
+### Changed
+- The Start/Stop button on the dashboard is now a full-width button under the status, and it shows a
+  spinner ("Starting…" / "Stopping…") until the bridge has finished starting or stopping.
+- The dashboard shows the plugged-in scanner (model, serial, firmware, USB 3 or 2) before you tap Start,
+  instead of "Scanner: bridge off". It also says when no scanner is plugged in, and when Android is still
+  waiting for you to allow USB access.
+- Start is disabled while the scanner is connected at USB 2 speed, which is too slow for its streams. The
+  dashboard says so and links to the fixes in the guide (re-plug the hub, connect a powered hub's power last,
+  check that the cable and hub are USB 3).
+- The mirror viewer's status panel no longer repeats the Wi-Fi Direct channel or the phone's battery
+  level, which are already on the mirrored screen and the phone's status bar.
+
+### Fixed
+- Stopping the bridge no longer freezes the app for a moment while it shuts down.
+
 ## [0.2.1] - 2026-11-07
 
 ### Changed
