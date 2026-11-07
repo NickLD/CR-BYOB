@@ -31,7 +31,8 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:largeHeap="true"
-        android:allowBackup="false">
+        android:allowBackup="false"
+        android:usesCleartextTraffic="${cleartext}">
 
         <activity
             android:name=".MainActivity"
