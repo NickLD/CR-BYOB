@@ -191,16 +191,29 @@ public class DeviceReportTest {
         h.lastExit = DeviceReport.exitLine(3, 12 * 60_000L);
         String d = DeviceReport.collect(otterOnWifi(), new SessionStats(), "x", "Phone", h).details;
         assertTrue(d, d.contains("- Battery optimization: on for CR-BYOB (Android may stop it in the background)\n"));
-        assertTrue(d, d.contains("- Last time the app closed: killed by Android (low memory), 12 min ago\n"));
+        assertTrue(d, d.contains("- App crashes and kills: killed by Android (low memory), 12 min ago\n"));
         h.unrestricted = true;
         h.lastExit = null;
         d = DeviceReport.collect(otterOnWifi(), new SessionStats(), "x", "Phone", h).details;
         assertTrue(d, d.contains("- Battery optimization: off for CR-BYOB (unrestricted)\n"));
-        assertFalse(d, d.contains("Last time the app closed"));
+        assertFalse(d, d.contains("App crashes and kills"));
         assertEquals("crashed, 3 h ago", DeviceReport.exitLine(4, 3 * 3_600_000L));
         assertEquals("stopped responding (ANR), just now", DeviceReport.exitLine(6, 20_000L));
         assertEquals("closed for an app update, 2 d ago", DeviceReport.exitLine(16, 50 * 3_600_000L));
         assertEquals("other (reason 99), 1 min ago", DeviceReport.exitLine(99, 60_000L));
+    }
+
+    /** A crash shouldn't hide behind a later normal close (reopened, then swiped away). Newest first. */
+    @Test
+    public void lastExitPicksTheLatestProblemOfTheDay() {
+        long min = 60_000L, h = 60 * min;
+        // swiped away 5 min ago, crashed 40 min ago, low memory 3 h ago
+        assertEquals("crashed, 40 min ago",
+                DeviceReport.lastProblemExit(new int[]{10, 4, 3}, new long[]{5 * min, 40 * min, 3 * h}));
+        // only normal closes today, a crash two days ago: nothing to blame
+        assertEquals("no crash or kill by Android in the last 24 h",
+                DeviceReport.lastProblemExit(new int[]{1, 10, 16, 4}, new long[]{min, 2 * h, 5 * h, 48 * h}));
+        assertEquals(null, DeviceReport.lastProblemExit(new int[0], new long[0]));   // no history at all
     }
 
     /** This phone only: the phone's own Wi-Fi and any Ethernet adapter play no part, so neither shows up. */

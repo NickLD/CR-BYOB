@@ -22,9 +22,9 @@ Tried CR-BYOB on a phone that isn't listed, or got different results on one that
 not, and say which connections you tried. In the app, `Send a device report` (in Session stats, or at the
 bottom of the dashboard) opens the form with your scanner, phone, app version and the session's measurements
 already filled in: frame rates, dropped frames, latency, power and battery, scanner disconnects, phone heat
-and why the app last closed. You pick
-the result and add what you saw. The scanner's serial number, Wi-Fi network names, IP addresses and the log
-are never included. Your phone gets added here, credited to your GitHub username.
+and any recent app crashes. You pick the result and add what you saw. The scanner's serial number, Wi-Fi
+network names, IP addresses and the log are never included. Your phone gets added here, credited to your
+GitHub username.
 
 ## Google Pixel 10 Pro XL
 

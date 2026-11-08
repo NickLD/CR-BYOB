@@ -21,7 +21,7 @@ when tagging. A release build fails if its version has no dated section here.
 - Device report, network: the lowest Wi-Fi link rate, whether the phone was also on a Wi-Fi network during
   Wi-Fi Direct, and the Ethernet link speed. With This phone only, the phone's Wi-Fi is left out.
 - Device report, phone: its chip, its worst heat level, whether battery optimization can stop CR-BYOB in the
-  background, and why the app last closed (for example a crash, or Android killing it).
+  background, and whether CR-BYOB crashed or Android stopped it in the last 24 hours.
 
 ## [0.2.3] - 2026-11-08
 

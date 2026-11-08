@@ -225,7 +225,7 @@ final class DeviceReport {
         if (health != null && health.unrestricted != null)
             d.append("- Battery optimization: ").append(health.unrestricted ? "off for CR-BYOB (unrestricted)"
                     : "on for CR-BYOB (Android may stop it in the background)").append('\n');
-        if (health != null && health.lastExit != null) d.append("- Last time the app closed: ").append(health.lastExit).append('\n');
+        if (health != null && health.lastExit != null) d.append("- App crashes and kills: ").append(health.lastExit).append('\n');
         if (s != null && s.linkScore >= 0 && s.linkWord != null) d.append("- Link quality now: ").append(s.linkWord).append('\n');
         if (f.scanner.isEmpty()) d.append("- Scanner: not plugged in when this report was opened\n");
         if (unlisted) d.append("- Scanner USB ID: ").append(model.substring(4)).append(" (not in the app's model list: please say which model it is)\n");
@@ -286,13 +286,37 @@ final class DeviceReport {
         if (Build.VERSION.SDK_INT >= 30) {
             try {
                 android.app.ActivityManager am = (android.app.ActivityManager) c.getSystemService(android.content.Context.ACTIVITY_SERVICE);
-                List<android.app.ApplicationExitInfo> l = am.getHistoricalProcessExitReasons(c.getPackageName(), 0, 1);
-                if (!l.isEmpty())
-                    h.lastExit = exitLine(l.get(0).getReason(), System.currentTimeMillis() - l.get(0).getTimestamp());
+                // Android keeps these after the process dies, so the next run can see how the last ones ended
+                List<android.app.ApplicationExitInfo> l = am.getHistoricalProcessExitReasons(c.getPackageName(), 0, 10);
+                int[] reasons = new int[l.size()];
+                long[] ages = new long[l.size()];
+                long now = System.currentTimeMillis();
+                for (int i = 0; i < l.size(); i++) {
+                    reasons[i] = l.get(i).getReason();
+                    ages[i] = now - l.get(i).getTimestamp();
+                }
+                h.lastExit = lastProblemExit(reasons, ages);
             } catch (Exception ignored) {
             }
         }
         return h;
+    }
+
+    /**
+     * The newest exit in the last 24 h that points at a problem (crash, ANR, killed by Android), newest first in
+     * the arrays; a note when there's none; null with no history. Normal closes (the app itself, the user, an
+     * update, a permission change) are skipped, so a crash doesn't hide behind a later swipe-away.
+     */
+    static String lastProblemExit(int[] reasons, long[] agesMs) {
+        if (reasons.length == 0) return null;
+        for (int i = 0; i < reasons.length; i++) {
+            if (agesMs[i] > 24 * 3_600_000L) break;
+            switch (reasons[i]) {
+                case 1: case 8: case 10: case 11: case 15: case 16: continue;   // normal ways to close
+                default: return exitLine(reasons[i], agesMs[i]);
+            }
+        }
+        return "no crash or kill by Android in the last 24 h";
     }
 
     /**
