@@ -10,6 +10,29 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-11-08
+
+### Added
+- If CR-BYOB crashed, stopped responding, or was closed by Android while you were using it, the dashboard
+  says so the next time you open it, once per crash, and offers to send a device report about it.
+- That report covers the run that stopped: how long after starting it stopped, what it was doing (streaming,
+  waiting for a PC, ...), its measurements up to then, its last events, and for a crash, where in the app it
+  happened. CR-BYOB saves this while the bridge runs (every 15 s, and right after anything happens), without
+  network names, addresses or the serial number.
+
+### Changed
+- Device reports say more, so problems are easier to pin down. As before, they never include the serial
+  number, network names, IP addresses or the log.
+- Device report, streams: frame rates against the rate Creality Scan asked for ("28.1 of 30 fps"), dropped
+  frames and time at reduced rate per stream, latency, and connection errors.
+- Device report, power: external power or battery and the kind of charger, the battery level at the start
+  and end, and whether the scanner disconnected while streaming or while idle (a deliberate unplug and a
+  power drop used to look the same).
+- Device report, network: the lowest Wi-Fi link rate, and whether the phone was also on a Wi-Fi network
+  during Wi-Fi Direct. With This phone only, the phone's Wi-Fi is left out.
+- Device report, phone: its chip, its worst heat level, whether battery optimization can stop CR-BYOB in the
+  background, and whether CR-BYOB crashed or Android stopped it in the last 24 hours.
+
 ## [0.2.3] - 2026-11-08
 
 ### Added

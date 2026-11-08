@@ -83,6 +83,174 @@ public class DeviceReportTest {
         assertTrue(body, body.contains("### What happened\n\nMeasured by CR-BYOB"));
     }
 
+    /** A session with every diagnostic set: power, disconnects by phase, reduced rate, errors, latency, heat, chip. */
+    private static SessionStats troubledSession() {
+        SessionStats ss = new SessionStats();
+        ss.streamMs = 100_000;
+        ss.streamingMsPer[0] = 100_000;
+        ss.sent[0] = 2_500;
+        ss.captured[0] = 2_600;
+        ss.qdrops[0] = 60;
+        ss.skipped[0] = 40;
+        ss.reducedMs[0] = 12_000;
+        ss.poweredMs = 65_000;
+        ss.batteryMs = 35_000;
+        ss.usbDetach.set(7);
+        ss.usbAttach.set(7);
+        ss.detachStreaming.set(2);
+        ss.brownouts.set(7);
+        ss.pcDrops.set(1);
+        ss.rtspErrors.set(2);
+        ss.stalledClosed.set(1);
+        ss.uvcErrors.set(3);
+        ss.mirrorConnects.set(2);
+        for (int i = 0; i < 100; i++) ss.frameAge.add(10_000 + i * 200);   // 10..29.8 ms
+        for (int i = 0; i < 100; i++) ss.xu.add(3_000);
+        ss.thermalMax = 2;
+        return ss;
+    }
+
+    @Test
+    public void reportsTheDiagnostics() {
+        Dash.Snap s = otterOnWifi();
+        s.soc = "Qualcomm SM8550";
+        String d = DeviceReport.collect(s, troubledSession(), "x", "Phone").details;
+        assertTrue(d, d.contains("- IR L: 25.0 fps, 96% of captured frames sent, 100 dropped, at reduced rate 12% of the time\n"));
+        assertTrue(d, d.contains("- Phone power: on battery 35% of the session\n"));   // no charger seen: nothing to name
+        assertTrue(d, d.contains("- Scanner disconnects: 2 while streaming, 5 while not streaming (7 while the phone was on battery)\n"));
+        assertTrue(d, d.contains("- Also counted: 1 PC disconnect, 2 stream errors, 1 stalled stream closed, 3 USB frame errors\n"));
+        assertTrue(d, d.contains("- Latency: frame age avg 19.9 ms, p95 29 ms; scanner replies p95 4 ms\n"));
+        assertTrue(d, d.contains("- Mirror viewer: used (2 connections)\n"));
+        assertTrue(d, d.contains("- Phone heat: moderate at worst (Android's thermal status)\n"));
+        assertTrue(d, d.contains("- Phone chip: Qualcomm SM8550\n"));
+    }
+
+    @Test
+    public void aQuietSessionStaysShort() {
+        SessionStats ss = new SessionStats();
+        ss.streamMs = 60_000;
+        ss.streamingMsPer[0] = 60_000;
+        ss.sent[0] = 1800;
+        ss.captured[0] = 1800;
+        ss.poweredMs = 60_000;
+        String d = DeviceReport.collect(otterOnWifi(), ss, "x", "Phone").details;
+        assertTrue(d, d.contains("- IR L: 30.0 fps, 100% of captured frames sent\n"));
+        ss.thermalMax = 0;
+        assertTrue(DeviceReport.collect(otterOnWifi(), ss, "x", "Phone").details.contains("- Phone heat: normal\n"));
+        ss.thermalMax = -1;                       // unknown (Android 9 and older): no line
+        assertTrue(d, d.contains("- Phone power: external the whole session\n"));
+        assertTrue(d, d.contains("- Scanner disconnects: none\n"));
+        assertTrue(d, d.contains("- Mirror viewer: not used\n"));
+        for (String absent : new String[]{"Also counted", "Latency", "Phone heat", "Phone chip", "dropped", "reduced rate"})
+            assertFalse(absent + " in\n" + d, d.contains(absent));
+
+        ss.poweredMs = 0;
+        ss.batteryMs = 60_000;
+        assertTrue(DeviceReport.collect(otterOnWifi(), ss, "x", "Phone").details.contains("- Phone power: battery the whole session\n"));
+    }
+
+    @Test
+    public void reportsTargetRateBatteryChargerAndWorstLink() {
+        SessionStats ss = troubledSession();
+        ss.reqFps[0] = 30;
+        ss.batteryStart = 80;
+        ss.batteryEnd = 72;
+        ss.charger = "USB-C PD or hub";
+        ss.rssiSum = -50 * 10;
+        ss.rssiN = 10;
+        ss.rssiMin = -61;
+        ss.linkMin = 433;
+        String d = DeviceReport.collect(otterOnWifi(), ss, "x", "Phone").details;
+        assertTrue(d, d.contains("- IR L: 25.0 of 30 fps, 96% of captured frames sent"));
+        assertTrue(d, d.contains("- Phone power: on battery 35% of the session, otherwise USB-C PD or hub\n"));
+        assertTrue(d, d.contains("- Phone battery: 80% at the start, 72% at the end\n"));
+        assertTrue(d, d.contains("- Wi-Fi signal during the session: avg -50 dBm, worst -61 dBm, lowest link rate 433 Mbit/s\n"));
+        ss.batteryMs = 0;
+        assertTrue(DeviceReport.collect(otterOnWifi(), ss, "x", "Phone").details
+                .contains("- Phone power: external the whole session (USB-C PD or hub)\n"));
+    }
+
+    @Test
+    public void wifiDirectSaysWhetherThePhoneSharedTheRadio() {
+        Dash.Snap s = otterOnWifi();
+        s.advertise = "p2p";
+        s.p2pFreq = 5180;
+        SessionStats ss = troubledSession();
+        ss.p2pDualMs = 40_000;
+        ss.p2pDualFreq = 2437;
+        String d = DeviceReport.collect(s, ss, "x", "Phone").details;
+        assertTrue(d, d.contains("- Phone also on a Wi-Fi network: 40% of the streaming time (2.4 GHz), sharing the radio with Wi-Fi Direct\n"));
+        assertFalse("no network name", d.contains("MyHomeNetwork"));
+        ss.p2pDualMs = 0;
+        assertTrue(DeviceReport.collect(s, ss, "x", "Phone").details.contains("- Phone also on a Wi-Fi network: no\n"));
+        s.advertise = "wifi";                                     // only asked about Wi-Fi Direct
+        assertFalse(DeviceReport.collect(s, ss, "x", "Phone").details.contains("Phone also on a Wi-Fi network"));
+    }
+
+    @Test
+    public void appHealthShowsBatteryOptimizationAndTheLastExit() {
+        DeviceReport.AppHealth h = new DeviceReport.AppHealth();
+        h.unrestricted = false;
+        h.lastExit = DeviceReport.exitLine(3, 12 * 60_000L);
+        String d = DeviceReport.collect(otterOnWifi(), new SessionStats(), "x", "Phone", h).details;
+        assertTrue(d, d.contains("- Battery optimization: on for CR-BYOB (Android may stop it in the background)\n"));
+        assertTrue(d, d.contains("- App crashes and kills: killed by Android (low memory), 12 min ago\n"));
+        h.unrestricted = true;
+        h.lastExit = null;
+        d = DeviceReport.collect(otterOnWifi(), new SessionStats(), "x", "Phone", h).details;
+        assertTrue(d, d.contains("- Battery optimization: off for CR-BYOB (unrestricted)\n"));
+        assertFalse(d, d.contains("App crashes and kills"));
+        assertEquals("crashed, 3 h ago", DeviceReport.exitLine(4, 3 * 3_600_000L));
+        assertEquals("stopped responding (ANR), just now", DeviceReport.exitLine(6, 20_000L));
+        assertEquals("closed for an app update, 2 d ago", DeviceReport.exitLine(16, 50 * 3_600_000L));
+        assertEquals("other (reason 99), 1 min ago", DeviceReport.exitLine(99, 60_000L));
+    }
+
+    private static final int FG = 100, FG_SERVICE = 125, CACHED = 400;   // RunningAppProcessInfo.IMPORTANCE_*
+
+    /** A crash shouldn't hide behind a later normal close (reopened, then swiped away). Newest first. */
+    @Test
+    public void lastExitPicksTheLatestProblemOfTheDay() {
+        long min = 60_000L, h = 60 * min;
+        // swiped away 5 min ago, crashed 40 min ago, low memory 3 h ago
+        assertEquals("crashed, 40 min ago", DeviceReport.lastProblemExit(
+                new int[]{10, 4, 3}, new int[]{FG, FG, FG_SERVICE}, new long[]{5 * min, 40 * min, 3 * h}));
+        // only normal closes today, a crash two days ago: nothing to blame
+        assertEquals("no crash or kill by Android in the last 24 h", DeviceReport.lastProblemExit(
+                new int[]{1, 10, 16, 4}, new int[]{FG, FG, CACHED, FG}, new long[]{min, 2 * h, 5 * h, 48 * h}));
+        assertEquals(null, DeviceReport.lastProblemExit(new int[0], new int[0], new long[0]));   // no history at all
+    }
+
+    /** Android clearing a cached background app is routine; killing it while the bridge ran isn't. Crashes always count. */
+    @Test
+    public void killsCountOnlyWhileTheAppWasInUse() {
+        assertFalse("low memory, cached", DeviceReport.isProblem(3, CACHED));
+        assertTrue("low memory, bridge running", DeviceReport.isProblem(3, FG_SERVICE));
+        assertTrue("crash, even in the background", DeviceReport.isProblem(4, CACHED));
+        assertTrue("ANR", DeviceReport.isProblem(6, CACHED));
+        assertFalse("swiped away", DeviceReport.isProblem(10, FG));
+        assertFalse("app update", DeviceReport.isProblem(16, FG_SERVICE));
+        long min = 60_000L;
+        assertEquals(1, DeviceReport.newestProblem(new int[]{3, 13, 4}, new int[]{CACHED, FG_SERVICE, FG}, new long[]{min, 2 * min, 3 * min}));
+        assertEquals(-1, DeviceReport.newestProblem(new int[]{3, 4}, new int[]{CACHED, FG}, new long[]{min, 25 * 60 * min}));
+    }
+
+    /** This phone only: the phone's own Wi-Fi and any Ethernet adapter play no part, so neither shows up. */
+    @Test
+    public void thisPhoneOnlyLeavesOutNetworkLinks() {
+        Dash.Snap s = otterOnWifi();                  // still connected to home Wi-Fi
+        s.advertise = "local";
+        SessionStats ss = troubledSession();
+        ss.rssiSum = -50 * 10;
+        ss.rssiN = 10;
+        ss.rssiMin = -61;
+        ss.linkMin = 433;
+        String d = DeviceReport.collect(s, ss, "x", "Phone").details;
+        assertTrue(d, d.contains("- Connection: This phone only (CrealityScan mobile app)\n"));
+        for (String absent : new String[]{"dBm", "link rate", "Phone also on a Wi-Fi network"})
+            assertFalse(absent + " in\n" + d, d.contains(absent));
+    }
+
     @Test
     public void neverLeaksSerialSsidOrAddresses() {
         Dash.Snap s = otterOnWifi();

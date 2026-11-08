@@ -19,6 +19,22 @@ public class ReportPromptTest {
                 StandardCharsets.UTF_8));
     }
 
+    /** "CR-BYOB stopped unexpectedly": once per crash, never again for one already shown. */
+    @Test
+    public void crashCardShowsOncePerCrash() {
+        assertTrue("never shown one", ReportPrompt.crashDue(1_000, 0));
+        assertFalse("this one was shown", ReportPrompt.crashDue(1_000, 1_000));
+        assertTrue("a newer crash", ReportPrompt.crashDue(2_000, 1_000));
+        assertFalse("no crash", ReportPrompt.crashDue(0, 0));
+        String m = ReportPrompt.crashMessage("crashed, 5 min ago", null);
+        assertTrue(m, m.startsWith("Last run: crashed, 5 min ago."));
+        assertTrue(m, m.contains("device report"));
+        assertTrue(m, m.contains("measurements of that session are lost"));
+        m = ReportPrompt.crashMessage("crashed, 5 min ago", "12m 30s after the app started: streaming to a PC over Wi-Fi Direct");
+        assertTrue(m, m.startsWith("Last run: crashed, 5 min ago (12m 30s after the app started: streaming to a PC over Wi-Fi Direct)."));
+        assertFalse(m, m.contains("lost"));
+    }
+
     @Test
     public void readsThePhonesFromTheRealList() throws Exception {
         List<String> l = listed();

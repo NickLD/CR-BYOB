@@ -8,6 +8,8 @@ import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.BatteryManager;
+import android.os.Build;
+import android.os.PowerManager;
 
 import java.net.Inet4Address;
 import java.net.InetAddress;
@@ -76,6 +78,7 @@ final class Dash {
         boolean advertiseDown;          // the network locked at Start has gone away
         String ethName, ethIp, lanIp;
         String ethNoIp;          // wired adapter with link up but no IPv4 (DHCP not done / failed)
+        String soc = SOC;        // phone chip, for the device report
         boolean scanner;
         boolean plugged, plugProbed;
         String idleModelStatus;         // bridge off: the plugged-in scanner's scanners.json status (sampleScannerIdle)    // bridge off: a scanner is on USB / its descriptors were read (sampleScannerIdle)
@@ -102,12 +105,16 @@ final class Dash {
     private final float[] totalHist = new float[HIST];
     private final ArrayDeque<long[]> window = new ArrayDeque<>();   // per second {sent, captured, drops}
     private final ArrayDeque<String> events = new ArrayDeque<>();
+    private final ArrayDeque<Object[]> timed = new ArrayDeque<>();   // {ms, text}, guarded by events
+    private long savedAt;                                            // last crash-record save (elapsed ms)
+    private volatile boolean eventSince;                             // an event since that save
     private static final SimpleDateFormat HMS = new SimpleDateFormat("HH:mm:ss", Locale.US);
 
     // previous state for event detection
     private Boolean wasScanner, wasPc, wasStreaming, wasPowered;
     private int wasK = 1, wasP2pClients = -1, wasScore = -2, scoreHold;
     private boolean brownOut;
+    private PowerManager power;         // thermal status (Android 10+)
 
     Dash(Bridge b) {
         this.b = b;
@@ -119,11 +126,22 @@ final class Dash {
     }
 
     void event(String text) {
+        long now = System.currentTimeMillis();
         synchronized (events) {
-            events.addFirst(HMS.format(new Date()) + "  " + text);
+            events.addFirst(HMS.format(new Date(now)) + "  " + text);
             while (events.size() > 30) events.removeLast();
+            timed.addFirst(new Object[]{now, text});
+            while (timed.size() > CrashRecord.EVENTS) timed.removeLast();
         }
+        eventSince = true;                  // the crash record saves at the end of this sample
         BLog.log("event", "text", text);
+    }
+
+    /** The latest events with their time, newest first, {Long ms, String text}: for the crash record. */
+    List<Object[]> recentEvents() {
+        synchronized (events) {
+            return new ArrayList<>(timed);
+        }
     }
 
     void start() {
@@ -327,7 +345,14 @@ final class Dash {
 
     }
 
-    /** Wired (eth, usb, rndis) and Wi-Fi IPv4 addresses. */
+    /** "Qualcomm SM8550" (Android 12+), "" before: USB behavior follows the chipset more than the brand. */
+    static final String SOC = Build.VERSION.SDK_INT >= 31
+            ? (Build.SOC_MANUFACTURER + " " + Build.SOC_MODEL).replace(Build.UNKNOWN, "").trim() : "";
+
+    /**
+     * Wired (eth, usb, rndis) and Wi-Fi IPv4 addresses. No link speed: /sys/class/net is closed to apps since
+     * Android 11 (checked on Android 17), and Android reports none for Ethernet otherwise.
+     */
     static void sampleInterfaces(Snap s) {
         try {
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
@@ -340,7 +365,7 @@ final class Dash {
                     if (wired && s.ethIp == null) s.ethNoIp = n;
                     continue;
                 }
-                if (n.startsWith("eth") || n.startsWith("usb") || n.startsWith("rndis")) { s.ethName = n; s.ethIp = ip; }
+                if (wired) { s.ethName = n; s.ethIp = ip; }
                 if (n.startsWith("wlan")) s.lanIp = ip;
             }
         } catch (Exception ignored) {
@@ -426,6 +451,7 @@ final class Dash {
             ss.skipped[i] = k - ss.base[i * 4 + 3];
             Stream cs = cur[i];
             if (cs.active) {
+                if (st.fps > 0) ss.reqFps[i] = st.fps;
                 ss.streamingMsPer[i] += dtMs;
                 if (cs.k > 1) ss.reducedMs[i] += dtMs;
                 if (cs.k > 1 && prevK[i] <= 1) ss.decimations[i]++;
@@ -480,6 +506,10 @@ final class Dash {
         s.advertiseSaved = b.savedAdvertise();
         s.fpsMode = b.fpsMode();
         s.fpsChoice = b.fpsChoice();
+        if (anyVideo && "p2p".equals(s.advertise) && s.staConnected) {   // Wi-Fi Direct sharing the radio with the STA
+            ss.p2pDualMs += dtMs;
+            ss.p2pDualFreq = s.staFreq;
+        }
         boolean[] up = Bridge.networksUp();
         s.advertiseDown = b.running && !"local".equals(s.advertise)    // "This phone only" needs no network
                 && ("p2p".equals(s.advertise) ? !up[0] && !s.p2pWanted : "eth".equals(s.advertise) ? !up[1] : !up[2]);
@@ -527,6 +557,20 @@ final class Dash {
                     : plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS ? "wireless charger" : "battery";
             int lvl = bat.getIntExtra(BatteryManager.EXTRA_LEVEL, -1), sc = bat.getIntExtra(BatteryManager.EXTRA_SCALE, 100);
             s.battery = lvl >= 0 ? Math.round(lvl * 100f / sc) : -1;
+            if (s.powered) {
+                ss.poweredMs += dtMs;
+                ss.charger = plugged == BatteryManager.BATTERY_PLUGGED_AC ? "USB-C PD or hub"    // as powerSource above
+                        : plugged == BatteryManager.BATTERY_PLUGGED_USB ? "plain USB (slow charging)"
+                        : plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS ? "wireless charger" : "other charger";
+            } else ss.batteryMs += dtMs;
+            if (s.battery >= 0) {
+                if (ss.batteryStart < 0) ss.batteryStart = s.battery;
+                ss.batteryEnd = s.battery;
+            }
+        }
+        if (Build.VERSION.SDK_INT >= 29) {
+            if (power == null) power = (PowerManager) b.ctx.getSystemService(Context.POWER_SERVICE);
+            if (power != null) ss.thermalMax = Math.max(ss.thermalMax, power.getCurrentThermalStatus());
         }
 
         // ---- events from transitions
@@ -539,6 +583,7 @@ final class Dash {
             } else {
                 brownOut = !s.powered;
                 SessionStats.cur.usbDetach.incrementAndGet();
+                if (Boolean.TRUE.equals(wasStreaming)) SessionStats.cur.detachStreaming.incrementAndGet();
                 if (brownOut) SessionStats.cur.brownouts.incrementAndGet();
                 event(brownOut ? "Scanner unplugged while the phone was on battery (likely brown-out)" : "Scanner unplugged");
             }
@@ -669,6 +714,13 @@ final class Dash {
 
         s.events = eventList();
         snap = s;
+        // what this run was doing, on disk, in case it crashes or Android kills it (read back by the next run)
+        long el = android.os.SystemClock.elapsedRealtime(), since = el - savedAt;
+        if (since >= CrashRecord.SAVE_EVERY_MS || (eventSince && since >= CrashRecord.SAVE_AFTER_EVENT_MS)) {
+            savedAt = el;
+            eventSince = false;
+            CrashRecord.saveNow();
+        }
     }
 
     private static void push(float[] h, float v) {

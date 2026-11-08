@@ -20,8 +20,10 @@ phone's network hardware matters as much as its processor. See
 Tried CR-BYOB on a phone that isn't listed, or got different results on one that is? File a
 [Device report](https://github.com/NickLD/CR-BYOB/issues/new?template=device-report.yml), whether it works or
 not, and say which connections you tried. In the app, `Send a device report` (in Session stats, or at the
-bottom of the dashboard) opens the form with your scanner, phone, app version and the session's frame rates
-already filled in; you pick the result and add what you saw. Your phone gets added here, credited to your
+bottom of the dashboard) opens the form with your scanner, phone, app version and the session's measurements
+already filled in: frame rates, dropped frames, latency, power and battery, scanner disconnects, phone heat
+and any recent app crashes. You pick the result and add what you saw. The scanner's serial number, Wi-Fi
+network names, IP addresses and the log are never included. Your phone gets added here, credited to your
 GitHub username.
 
 ## Google Pixel 10 Pro XL
