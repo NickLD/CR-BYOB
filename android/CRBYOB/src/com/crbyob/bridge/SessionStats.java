@@ -70,6 +70,12 @@ final class SessionStats {
     // phone: time on external power vs battery (sampled once a second), worst thermal status (-1 unknown)
     volatile long poweredMs, batteryMs;
     volatile int thermalMax = -1;
+    volatile int batteryStart = -1, batteryEnd = -1;   // battery % at the first and latest sample
+    volatile String charger;                           // the last external power seen ("USB-C PD or hub", ...)
+    // Wi-Fi Direct while the phone is also on a Wi-Fi network (they share the radio): streaming time, band
+    volatile long p2pDualMs;
+    volatile int p2pDualFreq;
+    final int[] reqFps = new int[3];                   // fps Creality Scan asked for, per stream (0 unknown)
     // latency
     final Hist xu = new Hist(), frameAge = new Hist();
     // link (whichever network carries the PC: Wi-Fi STA sampled; a Wi-Fi Direct GO has no per-client RSSI)

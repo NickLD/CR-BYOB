@@ -11,12 +11,17 @@ when tagging. A release build fails if its version has no dated section here.
 ## [Unreleased]
 
 ### Changed
-- Device reports say more about how the session went, so problems are easier to pin down: whether the
-  phone ran on external power or its battery, whether the scanner disconnected while streaming or while
-  idle (a deliberate unplug and a power drop used to look the same), dropped frames and time at reduced
-  rate per stream, latency, connection errors, whether the mirror viewer was used, the phone's worst heat
-  level and its chip, and the Ethernet link speed. As before, no serial number, network names, IP addresses
-  or log.
+- Device reports say more, so problems are easier to pin down. As before, they never include the serial
+  number, network names, IP addresses or the log.
+- Device report, streams: frame rates against the rate Creality Scan asked for ("28.1 of 30 fps"), dropped
+  frames and time at reduced rate per stream, latency, and connection errors.
+- Device report, power: external power or battery and the kind of charger, the battery level at the start
+  and end, and whether the scanner disconnected while streaming or while idle (a deliberate unplug and a
+  power drop used to look the same).
+- Device report, network: the lowest Wi-Fi link rate, whether the phone was also on a Wi-Fi network during
+  Wi-Fi Direct, and the Ethernet link speed. With This phone only, the phone's Wi-Fi is left out.
+- Device report, phone: its chip, its worst heat level, whether battery optimization can stop CR-BYOB in the
+  background, and why the app last closed (for example a crash, or Android killing it).
 
 ## [0.2.3] - 2026-11-08
 

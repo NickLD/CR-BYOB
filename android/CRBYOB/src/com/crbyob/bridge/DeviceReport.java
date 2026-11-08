@@ -113,6 +113,16 @@ final class DeviceReport {
 
     /** Fills the fields from a dashboard snapshot (may be null), the current session's stats and the build. */
     static Fields collect(Dash.Snap s, SessionStats ss, String appLine, String phone) {
+        return collect(s, ss, appLine, phone, null);
+    }
+
+    /** How Android treats the app on this phone: background limits and why the app last closed. */
+    static final class AppHealth {
+        Boolean unrestricted;   // exempt from battery optimization; null = unknown
+        String lastExit;        // exitLine() of the previous process, null = none recorded
+    }
+
+    static Fields collect(Dash.Snap s, SessionStats ss, String appLine, String phone, AppHealth health) {
         Fields f = new Fields();
         String model = s == null ? null : s.modelName != null ? s.modelName : (s.scanner || s.plugged) ? s.scannerModel : null;
         boolean unlisted = model != null && model.startsWith("PID ");     // product ID not in scanners.json
@@ -152,8 +162,8 @@ final class DeviceReport {
             for (int i = 0; i < 3; i++) {
                 if (ss.streamingMsPer[i] <= 0) continue;
                 double fps = ss.sent[i] * 1000.0 / ss.streamingMsPer[i];
-                d.append(String.format(Locale.US, "- %s: %.1f fps, %.0f%% of captured frames sent",
-                        n[i], fps, SessionStats.pct(ss.sent[i], ss.captured[i])));
+                d.append(String.format(Locale.US, "- %s: %.1f%s fps, %.0f%% of captured frames sent",
+                        n[i], fps, ss.reqFps[i] > 0 ? " of " + ss.reqFps[i] : "", SessionStats.pct(ss.sent[i], ss.captured[i])));
                 long dropped = ss.qdrops[i] + ss.skipped[i];
                 if (dropped > 0) d.append(", ").append(dropped).append(" dropped");
                 if (ss.reducedMs[i] > 0)                   // ½ or ⅓ rate because the link couldn't keep up
@@ -162,9 +172,17 @@ final class DeviceReport {
                 d.append('\n');
             }
             d.append(String.format(Locale.US, "- Data: avg %.0f Mbit/s, peak %.0f Mbit/s%n", ss.avgMbps(), ss.peakMbps));
-            if (ss.rssiN > 0)
-                d.append(String.format(Locale.US, "- Wi-Fi signal during the session: avg %d dBm, worst %d dBm%n",
+            // only when the bridge runs on Wi-Fi: with This phone only the phone's Wi-Fi plays no part
+            if (s != null && "wifi".equals(s.advertise) && ss.rssiN > 0) {
+                d.append(String.format(Locale.US, "- Wi-Fi signal during the session: avg %d dBm, worst %d dBm",
                         ss.rssiSum / ss.rssiN, ss.rssiMin));
+                if (ss.linkMin > 0) d.append(", lowest link rate ").append(ss.linkMin).append(" Mbit/s");
+                d.append('\n');
+            }
+            if (s != null && "p2p".equals(s.advertise))   // the two share the phone's radio: Wi-Fi Direct slows down
+                d.append("- Phone also on a Wi-Fi network: ").append(ss.p2pDualMs <= 0 ? "no"
+                        : String.format(Locale.US, "%.0f%% of the streaming time (%s), sharing the radio with Wi-Fi Direct",
+                                SessionStats.pct(ss.p2pDualMs, ss.streamMs), Dash.band(ss.p2pDualFreq))).append('\n');
             if (ss.frameAge.count() > 0) {
                 d.append(String.format(Locale.US, "- Latency: frame age avg %.1f ms, p95 %.0f ms",
                         ss.frameAge.avgMs(), ss.frameAge.pMs(0.95)));
@@ -172,11 +190,16 @@ final class DeviceReport {
                 d.append('\n');
             }
             long onPower = ss.poweredMs, onBattery = ss.batteryMs;
-            if (onPower + onBattery > 0)
-                d.append("- Phone power: ").append(onBattery == 0 ? "external the whole session"
-                        : onPower == 0 ? "battery the whole session"
-                        : String.format(Locale.US, "on battery %.0f%% of the session", SessionStats.pct(onBattery, onPower + onBattery)))
-                        .append('\n');
+            if (onPower + onBattery > 0) {
+                d.append("- Phone power: ");
+                if (onBattery == 0) d.append("external the whole session").append(ss.charger != null ? " (" + ss.charger + ")" : "");
+                else if (onPower == 0) d.append("battery the whole session");
+                else d.append(String.format(Locale.US, "on battery %.0f%% of the session", SessionStats.pct(onBattery, onPower + onBattery)))
+                        .append(ss.charger != null ? ", otherwise " + ss.charger : "");
+                d.append('\n');
+            }
+            if (ss.batteryStart >= 0 && ss.batteryEnd >= 0)
+                d.append("- Phone battery: ").append(ss.batteryStart).append("% at the start, ").append(ss.batteryEnd).append("% at the end\n");
             // a deliberate unplug and a brown-out look the same to the app: when it happened tells them apart
             long det = ss.usbDetach.get(), detStreaming = ss.detachStreaming.get(), onBatt = ss.brownouts.get();
             d.append("- Scanner disconnects: ");
@@ -199,6 +222,10 @@ final class DeviceReport {
                 d.append("- Phone heat (worst Android thermal status): ").append(SessionStats.thermalName(ss.thermalMax)).append('\n');
         }
         if (s != null && s.soc != null && !s.soc.isEmpty()) d.append("- Phone chip: ").append(s.soc).append('\n');
+        if (health != null && health.unrestricted != null)
+            d.append("- Battery optimization: ").append(health.unrestricted ? "off for CR-BYOB (unrestricted)"
+                    : "on for CR-BYOB (Android may stop it in the background)").append('\n');
+        if (health != null && health.lastExit != null) d.append("- Last time the app closed: ").append(health.lastExit).append('\n');
         if (s != null && s.linkScore >= 0 && s.linkWord != null) d.append("- Link quality now: ").append(s.linkWord).append('\n');
         if (f.scanner.isEmpty()) d.append("- Scanner: not plugged in when this report was opened\n");
         if (unlisted) d.append("- Scanner USB ID: ").append(model.substring(4)).append(" (not in the app's model list: please say which model it is)\n");
@@ -248,6 +275,56 @@ final class DeviceReport {
         if (!notes.isEmpty()) f.details = f.details.trim() + "\n" + notes + "\n";
     }
 
+    /** Battery-optimization exemption and the previous process's exit (Android 11+), read when the report opens. */
+    static AppHealth appHealth(android.content.Context c) {
+        AppHealth h = new AppHealth();
+        try {
+            android.os.PowerManager pm = (android.os.PowerManager) c.getSystemService(android.content.Context.POWER_SERVICE);
+            if (pm != null) h.unrestricted = pm.isIgnoringBatteryOptimizations(c.getPackageName());
+        } catch (Exception ignored) {
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                android.app.ActivityManager am = (android.app.ActivityManager) c.getSystemService(android.content.Context.ACTIVITY_SERVICE);
+                List<android.app.ApplicationExitInfo> l = am.getHistoricalProcessExitReasons(c.getPackageName(), 0, 1);
+                if (!l.isEmpty())
+                    h.lastExit = exitLine(l.get(0).getReason(), System.currentTimeMillis() - l.get(0).getTimestamp());
+            } catch (Exception ignored) {
+            }
+        }
+        return h;
+    }
+
+    /**
+     * ApplicationExitInfo.REASON_* in plain words, plus how long ago: "killed by Android (low memory), 12 min ago".
+     * Numbers rather than the constants, so the table compiles and tests without the newer API levels' fields.
+     */
+    static String exitLine(int reason, long agoMs) {
+        String why;
+        switch (reason) {
+            case 1: why = "closed normally"; break;
+            case 2: why = "stopped by Android (signal)"; break;
+            case 3: why = "killed by Android (low memory)"; break;
+            case 4: why = "crashed"; break;
+            case 5: why = "crashed (native code)"; break;
+            case 6: why = "stopped responding (ANR)"; break;
+            case 7: why = "failed to start"; break;
+            case 8: why = "restarted after a permission change"; break;
+            case 9: why = "killed by Android (too much battery or CPU use)"; break;
+            case 10: why = "closed by the user (swiped away or force-stopped)"; break;
+            case 11: why = "force-stopped by the user"; break;
+            case 12: why = "stopped because a component it relies on stopped"; break;
+            case 13: why = "killed by Android (other)"; break;
+            case 14: why = "frozen by Android"; break;
+            case 15: why = "closed after a change to the app's state"; break;
+            case 16: why = "closed for an app update"; break;
+            default: why = reason == 0 ? "unknown reason" : "other (reason " + reason + ")";
+        }
+        long min = Math.max(0, agoMs) / 60_000;
+        String ago = min < 1 ? "just now" : min < 60 ? min + " min ago" : min < 48 * 60 ? min / 60 + " h ago" : min / (24 * 60) + " d ago";
+        return why + ", " + ago;
+    }
+
     /** "2 stream errors" / "1 PC disconnect", only when the count isn't zero. */
     private static void count(List<String> out, long n, String one, String many) {
         if (n > 0) out.add(n + " " + (n == 1 ? one : many));
@@ -261,7 +338,7 @@ final class DeviceReport {
     static void open(Activity a) {
         Bridge b = BridgeService.current();
         Dash.Snap s = b != null ? b.dash.snap : lastSnap;
-        Fields f = collect(s, SessionStats.cur, AppVersion.bugReportLine(), Build.MANUFACTURER + " " + Build.MODEL);
+        Fields f = collect(s, SessionStats.cur, AppVersion.bugReportLine(), Build.MANUFACTURER + " " + Build.MODEL, appHealth(a));
         restore(f, draft);
         draft = null;
         BLog.log("device_report_review", "scanner", f.scanner, "network", f.network);

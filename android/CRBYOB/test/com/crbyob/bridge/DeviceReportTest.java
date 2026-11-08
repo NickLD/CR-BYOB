@@ -116,7 +116,7 @@ public class DeviceReportTest {
         s.soc = "Qualcomm SM8550";
         String d = DeviceReport.collect(s, troubledSession(), "x", "Phone").details;
         assertTrue(d, d.contains("- IR L: 25.0 fps, 96% of captured frames sent, 100 dropped, at reduced rate 12% of the time\n"));
-        assertTrue(d, d.contains("- Phone power: on battery 35% of the session\n"));
+        assertTrue(d, d.contains("- Phone power: on battery 35% of the session\n"));   // no charger seen: nothing to name
         assertTrue(d, d.contains("- Scanner disconnects: 2 while streaming, 5 while not streaming (7 while the phone was on battery)\n"));
         assertTrue(d, d.contains("- Also counted: 1 PC disconnect, 2 stream errors, 1 stalled stream closed, 3 USB frame errors\n"));
         assertTrue(d, d.contains("- Latency: frame age avg 19.9 ms, p95 29 ms; scanner replies p95 4 ms\n"));
@@ -144,6 +144,80 @@ public class DeviceReportTest {
         ss.poweredMs = 0;
         ss.batteryMs = 60_000;
         assertTrue(DeviceReport.collect(otterOnWifi(), ss, "x", "Phone").details.contains("- Phone power: battery the whole session\n"));
+    }
+
+    @Test
+    public void reportsTargetRateBatteryChargerAndWorstLink() {
+        SessionStats ss = troubledSession();
+        ss.reqFps[0] = 30;
+        ss.batteryStart = 80;
+        ss.batteryEnd = 72;
+        ss.charger = "USB-C PD or hub";
+        ss.rssiSum = -50 * 10;
+        ss.rssiN = 10;
+        ss.rssiMin = -61;
+        ss.linkMin = 433;
+        String d = DeviceReport.collect(otterOnWifi(), ss, "x", "Phone").details;
+        assertTrue(d, d.contains("- IR L: 25.0 of 30 fps, 96% of captured frames sent"));
+        assertTrue(d, d.contains("- Phone power: on battery 35% of the session, otherwise USB-C PD or hub\n"));
+        assertTrue(d, d.contains("- Phone battery: 80% at the start, 72% at the end\n"));
+        assertTrue(d, d.contains("- Wi-Fi signal during the session: avg -50 dBm, worst -61 dBm, lowest link rate 433 Mbit/s\n"));
+        ss.batteryMs = 0;
+        assertTrue(DeviceReport.collect(otterOnWifi(), ss, "x", "Phone").details
+                .contains("- Phone power: external the whole session (USB-C PD or hub)\n"));
+    }
+
+    @Test
+    public void wifiDirectSaysWhetherThePhoneSharedTheRadio() {
+        Dash.Snap s = otterOnWifi();
+        s.advertise = "p2p";
+        s.p2pFreq = 5180;
+        SessionStats ss = troubledSession();
+        ss.p2pDualMs = 40_000;
+        ss.p2pDualFreq = 2437;
+        String d = DeviceReport.collect(s, ss, "x", "Phone").details;
+        assertTrue(d, d.contains("- Phone also on a Wi-Fi network: 40% of the streaming time (2.4 GHz), sharing the radio with Wi-Fi Direct\n"));
+        assertFalse("no network name", d.contains("MyHomeNetwork"));
+        ss.p2pDualMs = 0;
+        assertTrue(DeviceReport.collect(s, ss, "x", "Phone").details.contains("- Phone also on a Wi-Fi network: no\n"));
+        s.advertise = "wifi";                                     // only asked about Wi-Fi Direct
+        assertFalse(DeviceReport.collect(s, ss, "x", "Phone").details.contains("Phone also on a Wi-Fi network"));
+    }
+
+    @Test
+    public void appHealthShowsBatteryOptimizationAndTheLastExit() {
+        DeviceReport.AppHealth h = new DeviceReport.AppHealth();
+        h.unrestricted = false;
+        h.lastExit = DeviceReport.exitLine(3, 12 * 60_000L);
+        String d = DeviceReport.collect(otterOnWifi(), new SessionStats(), "x", "Phone", h).details;
+        assertTrue(d, d.contains("- Battery optimization: on for CR-BYOB (Android may stop it in the background)\n"));
+        assertTrue(d, d.contains("- Last time the app closed: killed by Android (low memory), 12 min ago\n"));
+        h.unrestricted = true;
+        h.lastExit = null;
+        d = DeviceReport.collect(otterOnWifi(), new SessionStats(), "x", "Phone", h).details;
+        assertTrue(d, d.contains("- Battery optimization: off for CR-BYOB (unrestricted)\n"));
+        assertFalse(d, d.contains("Last time the app closed"));
+        assertEquals("crashed, 3 h ago", DeviceReport.exitLine(4, 3 * 3_600_000L));
+        assertEquals("stopped responding (ANR), just now", DeviceReport.exitLine(6, 20_000L));
+        assertEquals("closed for an app update, 2 d ago", DeviceReport.exitLine(16, 50 * 3_600_000L));
+        assertEquals("other (reason 99), 1 min ago", DeviceReport.exitLine(99, 60_000L));
+    }
+
+    /** This phone only: the phone's own Wi-Fi and any Ethernet adapter play no part, so neither shows up. */
+    @Test
+    public void thisPhoneOnlyLeavesOutNetworkLinks() {
+        Dash.Snap s = otterOnWifi();                  // still connected to home Wi-Fi
+        s.advertise = "local";
+        s.ethMbps = 1000;
+        SessionStats ss = troubledSession();
+        ss.rssiSum = -50 * 10;
+        ss.rssiN = 10;
+        ss.rssiMin = -61;
+        ss.linkMin = 433;
+        String d = DeviceReport.collect(s, ss, "x", "Phone").details;
+        assertTrue(d, d.contains("- Connection: This phone only (CrealityScan mobile app)\n"));
+        for (String absent : new String[]{"dBm", "link rate", "Mbit/s link", "Phone also on a Wi-Fi network"})
+            assertFalse(absent + " in\n" + d, d.contains(absent));
     }
 
     @Test

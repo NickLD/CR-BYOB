@@ -445,6 +445,7 @@ final class Dash {
             ss.skipped[i] = k - ss.base[i * 4 + 3];
             Stream cs = cur[i];
             if (cs.active) {
+                if (st.fps > 0) ss.reqFps[i] = st.fps;
                 ss.streamingMsPer[i] += dtMs;
                 if (cs.k > 1) ss.reducedMs[i] += dtMs;
                 if (cs.k > 1 && prevK[i] <= 1) ss.decimations[i]++;
@@ -499,6 +500,10 @@ final class Dash {
         s.advertiseSaved = b.savedAdvertise();
         s.fpsMode = b.fpsMode();
         s.fpsChoice = b.fpsChoice();
+        if (anyVideo && "p2p".equals(s.advertise) && s.staConnected) {   // Wi-Fi Direct sharing the radio with the STA
+            ss.p2pDualMs += dtMs;
+            ss.p2pDualFreq = s.staFreq;
+        }
         boolean[] up = Bridge.networksUp();
         s.advertiseDown = b.running && !"local".equals(s.advertise)    // "This phone only" needs no network
                 && ("p2p".equals(s.advertise) ? !up[0] && !s.p2pWanted : "eth".equals(s.advertise) ? !up[1] : !up[2]);
@@ -546,8 +551,16 @@ final class Dash {
                     : plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS ? "wireless charger" : "battery";
             int lvl = bat.getIntExtra(BatteryManager.EXTRA_LEVEL, -1), sc = bat.getIntExtra(BatteryManager.EXTRA_SCALE, 100);
             s.battery = lvl >= 0 ? Math.round(lvl * 100f / sc) : -1;
-            if (s.powered) ss.poweredMs += dtMs;
-            else ss.batteryMs += dtMs;
+            if (s.powered) {
+                ss.poweredMs += dtMs;
+                ss.charger = plugged == BatteryManager.BATTERY_PLUGGED_AC ? "USB-C PD or hub"    // as powerSource above
+                        : plugged == BatteryManager.BATTERY_PLUGGED_USB ? "plain USB (slow charging)"
+                        : plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS ? "wireless charger" : "other charger";
+            } else ss.batteryMs += dtMs;
+            if (s.battery >= 0) {
+                if (ss.batteryStart < 0) ss.batteryStart = s.battery;
+                ss.batteryEnd = s.battery;
+            }
         }
         if (Build.VERSION.SDK_INT >= 29) {
             if (power == null) power = (PowerManager) b.ctx.getSystemService(Context.POWER_SERVICE);
