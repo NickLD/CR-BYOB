@@ -105,6 +105,8 @@ final class Dash {
     private final float[] totalHist = new float[HIST];
     private final ArrayDeque<long[]> window = new ArrayDeque<>();   // per second {sent, captured, drops}
     private final ArrayDeque<String> events = new ArrayDeque<>();
+    private final ArrayDeque<Object[]> timed = new ArrayDeque<>();   // {ms, text}, guarded by events
+    private long savedAt;                                            // last crash-record save (elapsed ms)
     private static final SimpleDateFormat HMS = new SimpleDateFormat("HH:mm:ss", Locale.US);
 
     // previous state for event detection
@@ -123,11 +125,21 @@ final class Dash {
     }
 
     void event(String text) {
+        long now = System.currentTimeMillis();
         synchronized (events) {
-            events.addFirst(HMS.format(new Date()) + "  " + text);
+            events.addFirst(HMS.format(new Date(now)) + "  " + text);
             while (events.size() > 30) events.removeLast();
+            timed.addFirst(new Object[]{now, text});
+            while (timed.size() > CrashRecord.EVENTS) timed.removeLast();
         }
         BLog.log("event", "text", text);
+    }
+
+    /** The latest events with their time, newest first, {Long ms, String text}: for the crash record. */
+    List<Object[]> recentEvents() {
+        synchronized (events) {
+            return new ArrayList<>(timed);
+        }
     }
 
     void start() {
@@ -700,6 +712,12 @@ final class Dash {
 
         s.events = eventList();
         snap = s;
+        // what this run was doing, on disk, in case it crashes or Android kills it (read back by the next run)
+        long el = android.os.SystemClock.elapsedRealtime();
+        if (el - savedAt >= CrashRecord.SAVE_EVERY_MS) {
+            savedAt = el;
+            CrashRecord.saveNow();
+        }
     }
 
     private static void push(float[] h, float v) {

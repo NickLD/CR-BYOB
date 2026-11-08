@@ -81,11 +81,17 @@ final class ReportPrompt {
         return exitTs > 0 && exitTs > seenTs;
     }
 
-    /** exitLine: DeviceReport.exitLine, e.g. "crashed, 5 min ago". */
-    static String crashMessage(String exitLine) {
-        return "Last run: " + exitLine + ". Tap here to send a device report about it: it includes how the "
-                + "app stopped, and you can add what you were doing. The measurements of that session are lost, so "
-                + "say what happened.";
+    /**
+     * exitLine: DeviceReport.exitLine ("crashed, 5 min ago"). summary: DeviceReport.stoppedRunSummary when the run's
+     * crash record was kept, else null (then its measurements are gone, and the card says so).
+     */
+    static String crashMessage(String exitLine, String summary) {
+        if (summary == null)
+            return "Last run: " + exitLine + ". Tap here to send a device report about it: it includes how the "
+                    + "app stopped, and you can add what you were doing. The measurements of that session are lost, so "
+                    + "say what happened.";
+        return "Last run: " + exitLine + " (" + summary + "). Tap here to send a device report about it: it includes "
+                + "what the app was doing and its measurements up to then. Add what you were doing.";
     }
 
     static String message(String missing) {

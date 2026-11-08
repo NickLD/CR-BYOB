@@ -83,6 +83,7 @@ public final class BridgeService extends Service {
     public void onCreate() {
         super.onCreate();
         BLog.init(this);
+        CrashRecord.install(this);
         MirrorSession.get(this);        // so the bridge's broadcast watcher can auto-connect the mirror
     }
 

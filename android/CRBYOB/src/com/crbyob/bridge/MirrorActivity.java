@@ -175,6 +175,7 @@ public final class MirrorActivity extends Activity implements MirrorSession.Ui {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         BLog.init(this);
+        CrashRecord.install(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         MainActivity.applyLockScreenMode(this);           // over the lock screen only with the dev option on
         getWindow().setStatusBarColor(BG);          // Android 14 and older; 15+ draws edge-to-edge (fitSystemBars)

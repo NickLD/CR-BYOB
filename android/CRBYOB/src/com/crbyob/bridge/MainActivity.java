@@ -255,6 +255,7 @@ public final class MainActivity extends Activity {
     protected void onCreate(Bundle b) {
         enableStrictMode();
         super.onCreate(b);
+        CrashRecord.install(this);
         BLog.init(this);
         if (b == null) BLog.log("app_version", "name", AppVersion.NAME, "code", AppVersion.CODE,
                 "channel", AppVersion.CHANNEL, "commit", AppVersion.COMMIT, "debug", BuildConfig.DEBUG);
@@ -1227,7 +1228,7 @@ public final class MainActivity extends Activity {
      * within the last 24 h and not shown before for that exit. testLine (debug): show it now with that text.
      */
     private void updateCrashPrompt(String testLine) {
-        String line = testLine;
+        String line = testLine, summary = null;
         long ts = testLine != null ? System.currentTimeMillis() : 0;
         DeviceReport.Exits e = testLine == null ? DeviceReport.exits(this) : null;
         if (e != null) {
@@ -1237,11 +1238,13 @@ public final class MainActivity extends Activity {
             if (i >= 0 && ReportPrompt.crashDue(e.timestamps[i], seen)) {
                 line = DeviceReport.exitLine(e.reasons[i], ages[i]);
                 ts = e.timestamps[i];
+                CrashRecord.Run r = CrashRecord.load(this, e.pids[i]);
+                if (r != null) summary = DeviceReport.stoppedRunSummary(r, ts);
             }
         }
         if (line == null) return;
         crashTs = ts;
-        crashText.setText(ReportPrompt.crashMessage(line));
+        crashText.setText(ReportPrompt.crashMessage(line, summary));
         if (crashCard.getVisibility() != View.VISIBLE) BLog.log("crash_prompt_shown", "exit", line);
         crashCard.setVisibility(View.VISIBLE);
     }

@@ -1,5 +1,9 @@
 package com.crbyob.bridge;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -39,6 +43,28 @@ final class SessionStats {
         String fmt() {
             return count() == 0 ? "—" : String.format(Locale.US, "%.1f / %.0f / %.0f ms", avgMs(), pMs(0.95), maxMs());
         }
+
+        /** {n, sum, max, b: {bucket: count}} with only the non-empty buckets (a few dozen in practice). */
+        synchronized JSONObject toJson() throws JSONException {
+            JSONObject j = new JSONObject().put("n", n).put("sum", sumUs).put("max", maxUs);
+            JSONObject bj = new JSONObject();
+            for (int i = 0; i < b.length; i++) if (b[i] != 0) bj.put(String.valueOf(i), b[i]);
+            return j.put("b", bj);
+        }
+
+        synchronized void fromJson(JSONObject j) {
+            if (j == null) return;
+            n = j.optLong("n");
+            sumUs = j.optLong("sum");
+            maxUs = j.optLong("max");
+            JSONObject bj = j.optJSONObject("b");
+            if (bj == null) return;
+            for (java.util.Iterator<String> it = bj.keys(); it.hasNext(); ) {
+                String k = it.next();
+                int i = Integer.parseInt(k);
+                if (i >= 0 && i < b.length) b[i] = bj.optInt(k);
+            }
+        }
     }
 
     static volatile SessionStats cur = new SessionStats();
@@ -48,7 +74,7 @@ final class SessionStats {
         BLog.log("session_stats_reset");
     }
 
-    final long startMs = System.currentTimeMillis();
+    volatile long startMs = System.currentTimeMillis();   // set again by fromJson for a saved session
     volatile long stopMs;                    // 0 while the bridge runs
     // time (accumulated by Dash once a second)
     volatile long pcMs, streamMs;
@@ -82,6 +108,84 @@ final class SessionStats {
     volatile int rssiMin = 0, linkMin = 0;
     volatile long rssiSum, rssiN;
     volatile String linkNet = "";
+
+    // ---- saved with the crash record (CrashRecord), so the next run can report on a session that died.
+    // Everything the device report reads, nothing more: linkNet (a network name) and base stay out.
+
+    private static final String[] COUNTERS = {"pcDrops", "rtspCloses", "rtspErrors", "imuConnects", "p2pJoins",
+            "p2pLeaves", "usbDetach", "usbAttach", "brownouts", "mirrorConnects", "uvcErrors", "stalledClosed",
+            "takeovers", "peerCleanups", "detachStreaming"};
+
+    private AtomicLong[] counters() {
+        return new AtomicLong[]{pcDrops, rtspCloses, rtspErrors, imuConnects, p2pJoins, p2pLeaves, usbDetach,
+                usbAttach, brownouts, mirrorConnects, uvcErrors, stalledClosed, takeovers, peerCleanups, detachStreaming};
+    }
+
+    private static JSONArray arr(long[] a) {
+        JSONArray j = new JSONArray();
+        for (long v : a) j.put(v);
+        return j;
+    }
+
+    private static void arr(JSONArray j, long[] into) {
+        if (j != null) for (int i = 0; i < into.length && i < j.length(); i++) into[i] = j.optLong(i);
+    }
+
+    JSONObject toJson() throws JSONException {
+        JSONObject j = new JSONObject()
+                .put("startMs", startMs).put("stopMs", stopMs).put("pcMs", pcMs).put("streamMs", streamMs)
+                .put("peakMbps", peakMbps).put("bytesAtStart", bytesAtStart).put("bytesNow", bytesNow)
+                .put("captured", arr(captured)).put("sent", arr(sent)).put("qdrops", arr(qdrops))
+                .put("skipped", arr(skipped)).put("reducedMs", arr(reducedMs))
+                .put("streamingMsPer", arr(streamingMsPer)).put("decimations", arr(decimations))
+                .put("reqFps", arr(new long[]{reqFps[0], reqFps[1], reqFps[2]}))
+                .put("poweredMs", poweredMs).put("batteryMs", batteryMs).put("thermalMax", thermalMax)
+                .put("batteryStart", batteryStart).put("batteryEnd", batteryEnd).put("charger", charger)
+                .put("p2pDualMs", p2pDualMs).put("p2pDualFreq", p2pDualFreq)
+                .put("rssiMin", rssiMin).put("linkMin", linkMin).put("rssiSum", rssiSum).put("rssiN", rssiN)
+                .put("xu", xu.toJson()).put("frameAge", frameAge.toJson());
+        AtomicLong[] c = counters();
+        for (int i = 0; i < c.length; i++) j.put(COUNTERS[i], c[i].get());
+        return j;
+    }
+
+    static SessionStats fromJson(JSONObject j) {
+        SessionStats s = new SessionStats();
+        s.startMs = j.optLong("startMs", s.startMs);
+        s.stopMs = j.optLong("stopMs");
+        s.pcMs = j.optLong("pcMs");
+        s.streamMs = j.optLong("streamMs");
+        s.peakMbps = j.optDouble("peakMbps", 0);
+        s.bytesAtStart = j.optLong("bytesAtStart", -1);
+        s.bytesNow = j.optLong("bytesNow");
+        arr(j.optJSONArray("captured"), s.captured);
+        arr(j.optJSONArray("sent"), s.sent);
+        arr(j.optJSONArray("qdrops"), s.qdrops);
+        arr(j.optJSONArray("skipped"), s.skipped);
+        arr(j.optJSONArray("reducedMs"), s.reducedMs);
+        arr(j.optJSONArray("streamingMsPer"), s.streamingMsPer);
+        arr(j.optJSONArray("decimations"), s.decimations);
+        long[] req = new long[3];
+        arr(j.optJSONArray("reqFps"), req);
+        for (int i = 0; i < 3; i++) s.reqFps[i] = (int) req[i];
+        s.poweredMs = j.optLong("poweredMs");
+        s.batteryMs = j.optLong("batteryMs");
+        s.thermalMax = j.optInt("thermalMax", -1);
+        s.batteryStart = j.optInt("batteryStart", -1);
+        s.batteryEnd = j.optInt("batteryEnd", -1);
+        s.charger = j.isNull("charger") ? null : j.optString("charger", null);
+        s.p2pDualMs = j.optLong("p2pDualMs");
+        s.p2pDualFreq = j.optInt("p2pDualFreq");
+        s.rssiMin = j.optInt("rssiMin");
+        s.linkMin = j.optInt("linkMin");
+        s.rssiSum = j.optLong("rssiSum");
+        s.rssiN = j.optLong("rssiN");
+        s.xu.fromJson(j.optJSONObject("xu"));
+        s.frameAge.fromJson(j.optJSONObject("frameAge"));
+        AtomicLong[] c = s.counters();
+        for (int i = 0; i < c.length; i++) c[i].set(j.optLong(COUNTERS[i]));
+        return s;
+    }
 
     // ---- hot-path hooks (cheap)
     static void xuRoundTrip(long ns) { cur.xu.add(ns / 1000); }

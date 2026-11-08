@@ -13,6 +13,10 @@ when tagging. A release build fails if its version has no dated section here.
 ### Added
 - If CR-BYOB crashed, stopped responding, or was closed by Android while you were using it, the dashboard
   says so the next time you open it, once per crash, and offers to send a device report about it.
+- That report covers the run that stopped: how long after starting it stopped, what it was doing (streaming,
+  waiting for a PC, ...), its measurements up to then, its last events, and for a crash, where in the app it
+  happened. CR-BYOB saves this every few seconds while the bridge runs, without network names, addresses or
+  the serial number.
 
 ### Changed
 - Device reports say more, so problems are easier to pin down. As before, they never include the serial
