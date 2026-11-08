@@ -154,7 +154,6 @@ final class DeviceReport {
                 int rate = s.staTx > 0 ? s.staTx : s.staLink;
                 if (rate > 0) d.append(", ").append(rate).append(" Mbit/s link rate");
             }
-            if ("eth".equals(s.advertise) && s.ethMbps > 0) d.append(", ").append(s.ethMbps).append(" Mbit/s link");
             d.append('\n');
         }
         if (streamed) {

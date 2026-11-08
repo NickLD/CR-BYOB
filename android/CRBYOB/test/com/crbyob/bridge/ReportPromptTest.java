@@ -27,7 +27,7 @@ public class ReportPromptTest {
         assertTrue("a newer crash", ReportPrompt.crashDue(2_000, 1_000));
         assertFalse("no crash", ReportPrompt.crashDue(0, 0));
         String m = ReportPrompt.crashMessage("crashed, 5 min ago");
-        assertTrue(m, m.startsWith("CR-BYOB stopped unexpectedly: crashed, 5 min ago."));
+        assertTrue(m, m.startsWith("Last run: crashed, 5 min ago."));
         assertTrue(m, m.contains("device report"));
     }
 

@@ -83,7 +83,7 @@ final class ReportPrompt {
 
     /** exitLine: DeviceReport.exitLine, e.g. "crashed, 5 min ago". */
     static String crashMessage(String exitLine) {
-        return "CR-BYOB stopped unexpectedly: " + exitLine + ". Tap here to send a device report about it: it includes how the "
+        return "Last run: " + exitLine + ". Tap here to send a device report about it: it includes how the "
                 + "app stopped, and you can add what you were doing. The measurements of that session are lost, so "
                 + "say what happened.";
     }

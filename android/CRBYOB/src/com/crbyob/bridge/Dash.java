@@ -78,7 +78,6 @@ final class Dash {
         boolean advertiseDown;          // the network locked at Start has gone away
         String ethName, ethIp, lanIp;
         String ethNoIp;          // wired adapter with link up but no IPv4 (DHCP not done / failed)
-        int ethMbps = -1;        // wired link speed from sysfs, -1 when Android doesn't let the app read it
         String soc = SOC;        // phone chip, for the device report
         boolean scanner;
         boolean plugged, plugProbed;
@@ -332,21 +331,14 @@ final class Dash {
 
     }
 
-    /** Wired (eth, usb, rndis) and Wi-Fi IPv4 addresses. */
     /** "Qualcomm SM8550" (Android 12+), "" before: USB behavior follows the chipset more than the brand. */
     static final String SOC = Build.VERSION.SDK_INT >= 31
             ? (Build.SOC_MANUFACTURER + " " + Build.SOC_MODEL).replace(Build.UNKNOWN, "").trim() : "";
 
-    /** Link speed of a wired interface in Mbit/s, or -1 (no link, or sysfs closed to apps on this phone). */
-    static int linkMbps(String iface) {
-        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader("/sys/class/net/" + iface + "/speed"))) {
-            int v = Integer.parseInt(r.readLine().trim());
-            return v > 0 ? v : -1;
-        } catch (Exception e) {
-            return -1;
-        }
-    }
-
+    /**
+     * Wired (eth, usb, rndis) and Wi-Fi IPv4 addresses. No link speed: /sys/class/net is closed to apps since
+     * Android 11 (checked on Android 17), and Android reports none for Ethernet otherwise.
+     */
     static void sampleInterfaces(Snap s) {
         try {
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
@@ -359,7 +351,7 @@ final class Dash {
                     if (wired && s.ethIp == null) s.ethNoIp = n;
                     continue;
                 }
-                if (wired) { s.ethName = n; s.ethIp = ip; s.ethMbps = linkMbps(n); }
+                if (wired) { s.ethName = n; s.ethIp = ip; }
                 if (n.startsWith("wlan")) s.lanIp = ip;
             }
         } catch (Exception ignored) {

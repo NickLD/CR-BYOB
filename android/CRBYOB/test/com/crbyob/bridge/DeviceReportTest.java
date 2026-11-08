@@ -237,7 +237,6 @@ public class DeviceReportTest {
     public void thisPhoneOnlyLeavesOutNetworkLinks() {
         Dash.Snap s = otterOnWifi();                  // still connected to home Wi-Fi
         s.advertise = "local";
-        s.ethMbps = 1000;
         SessionStats ss = troubledSession();
         ss.rssiSum = -50 * 10;
         ss.rssiN = 10;
@@ -245,21 +244,8 @@ public class DeviceReportTest {
         ss.linkMin = 433;
         String d = DeviceReport.collect(s, ss, "x", "Phone").details;
         assertTrue(d, d.contains("- Connection: This phone only (CrealityScan mobile app)\n"));
-        for (String absent : new String[]{"dBm", "link rate", "Mbit/s link", "Phone also on a Wi-Fi network"})
+        for (String absent : new String[]{"dBm", "link rate", "Phone also on a Wi-Fi network"})
             assertFalse(absent + " in\n" + d, d.contains(absent));
-    }
-
-    @Test
-    public void ethernetShowsItsLinkSpeed() {
-        Dash.Snap s = otterOnWifi();
-        s.advertise = "eth";
-        s.staConnected = false;
-        s.ethMbps = 100;
-        String d = DeviceReport.collect(s, new SessionStats(), "x", "Phone").details;
-        assertTrue(d, d.contains("- Connection: Ethernet, 100 Mbit/s link\n"));
-        s.ethMbps = -1;                                // unreadable: no speed, no guess
-        d = DeviceReport.collect(s, new SessionStats(), "x", "Phone").details;
-        assertTrue(d, d.contains("- Connection: Ethernet\n"));
     }
 
     @Test

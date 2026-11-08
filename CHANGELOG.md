@@ -22,8 +22,8 @@ when tagging. A release build fails if its version has no dated section here.
 - Device report, power: external power or battery and the kind of charger, the battery level at the start
   and end, and whether the scanner disconnected while streaming or while idle (a deliberate unplug and a
   power drop used to look the same).
-- Device report, network: the lowest Wi-Fi link rate, whether the phone was also on a Wi-Fi network during
-  Wi-Fi Direct, and the Ethernet link speed. With This phone only, the phone's Wi-Fi is left out.
+- Device report, network: the lowest Wi-Fi link rate, and whether the phone was also on a Wi-Fi network
+  during Wi-Fi Direct. With This phone only, the phone's Wi-Fi is left out.
 - Device report, phone: its chip, its worst heat level, whether battery optimization can stop CR-BYOB in the
   background, and whether CR-BYOB crashed or Android stopped it in the last 24 hours.
 
