@@ -15,8 +15,8 @@ when tagging. A release build fails if its version has no dated section here.
   says so the next time you open it, once per crash, and offers to send a device report about it.
 - That report covers the run that stopped: how long after starting it stopped, what it was doing (streaming,
   waiting for a PC, ...), its measurements up to then, its last events, and for a crash, where in the app it
-  happened. CR-BYOB saves this every few seconds while the bridge runs, without network names, addresses or
-  the serial number.
+  happened. CR-BYOB saves this while the bridge runs (every 15 s, and right after anything happens), without
+  network names, addresses or the serial number.
 
 ### Changed
 - Device reports say more, so problems are easier to pin down. As before, they never include the serial

@@ -107,6 +107,7 @@ final class Dash {
     private final ArrayDeque<String> events = new ArrayDeque<>();
     private final ArrayDeque<Object[]> timed = new ArrayDeque<>();   // {ms, text}, guarded by events
     private long savedAt;                                            // last crash-record save (elapsed ms)
+    private volatile boolean eventSince;                             // an event since that save
     private static final SimpleDateFormat HMS = new SimpleDateFormat("HH:mm:ss", Locale.US);
 
     // previous state for event detection
@@ -132,6 +133,7 @@ final class Dash {
             timed.addFirst(new Object[]{now, text});
             while (timed.size() > CrashRecord.EVENTS) timed.removeLast();
         }
+        eventSince = true;                  // the crash record saves at the end of this sample
         BLog.log("event", "text", text);
     }
 
@@ -713,9 +715,10 @@ final class Dash {
         s.events = eventList();
         snap = s;
         // what this run was doing, on disk, in case it crashes or Android kills it (read back by the next run)
-        long el = android.os.SystemClock.elapsedRealtime();
-        if (el - savedAt >= CrashRecord.SAVE_EVERY_MS) {
+        long el = android.os.SystemClock.elapsedRealtime(), since = el - savedAt;
+        if (since >= CrashRecord.SAVE_EVERY_MS || (eventSince && since >= CrashRecord.SAVE_AFTER_EVENT_MS)) {
             savedAt = el;
+            eventSince = false;
             CrashRecord.saveNow();
         }
     }

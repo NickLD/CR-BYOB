@@ -23,7 +23,8 @@ import java.util.regex.Pattern;
  *
  * One file per process, files/runs/&lt;pid&gt;.json, the newest few kept: a reopened app writes its own file and can't
  * overwrite the record of the run that crashed before the report about it goes out. The exit is matched by pid.
- * Saved every few seconds by Dash while the bridge runs, and once more by the crash handler at a Java crash.
+ * Saved by Dash while the bridge runs (every 15 s, and right after an event such as streaming starting or the
+ * scanner dropping out), and once more by the crash handler at a Java crash.
  *
  * Privacy as in the device report: no serial, network names or passwords (scrubbed from the events), no IP
  * addresses (replaced by &lt;IP&gt;), no exception messages (they can carry any of those), no log.
@@ -33,7 +34,8 @@ final class CrashRecord {
 
     static final String DIR = "runs";
     static final int KEEP = 4;
-    static final long SAVE_EVERY_MS = 5_000;
+    /** Steady state: a few KB this often while the bridge runs. An event saves sooner (Dash), at most once a second. */
+    static final long SAVE_EVERY_MS = 15_000, SAVE_AFTER_EVENT_MS = 1_000;
     static final int EVENTS = 10;
 
     /** A saved run, read back by a later process. */
@@ -186,6 +188,7 @@ final class CrashRecord {
         Thread.setDefaultUncaughtExceptionHandler((th, ex) -> {
             try {
                 lastError = error(ex);
+                BLog.log("crash_record_crash", "error", lastError);
                 saveNow();
             } catch (Throwable ignored) {
             } finally {
@@ -214,8 +217,12 @@ final class CrashRecord {
             try (FileOutputStream o = new FileOutputStream(tmp)) {
                 o.write(j.toString().getBytes(StandardCharsets.UTF_8));
             }
-            if (!tmp.renameTo(out)) return;
+            if (!tmp.renameTo(out)) {
+                BLog.log("crash_record_error", "err", "rename failed");
+                return;
+            }
             prune(dir);
+            if (lastError != null) BLog.log("crash_record_saved", "pid", pid);
         } catch (Exception e) {
             BLog.log("crash_record_error", "err", String.valueOf(e));
         }
