@@ -10,6 +10,14 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+### Changed
+- Device reports say more about how the session went, so problems are easier to pin down: whether the
+  phone ran on external power or its battery, whether the scanner disconnected while streaming or while
+  idle (a deliberate unplug and a power drop used to look the same), dropped frames and time at reduced
+  rate per stream, latency, connection errors, whether the mirror viewer was used, the phone's worst heat
+  level and its chip, and the Ethernet link speed. As before, no serial number, network names, IP addresses
+  or log.
+
 ## [0.2.3] - 2026-11-08
 
 ### Added

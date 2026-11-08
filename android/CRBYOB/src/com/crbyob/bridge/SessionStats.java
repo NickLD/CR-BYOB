@@ -65,7 +65,11 @@ final class SessionStats {
             imuConnects = new AtomicLong(), p2pJoins = new AtomicLong(), p2pLeaves = new AtomicLong(),
             usbDetach = new AtomicLong(), usbAttach = new AtomicLong(), brownouts = new AtomicLong(),
             mirrorConnects = new AtomicLong(), uvcErrors = new AtomicLong(),
-            stalledClosed = new AtomicLong(), takeovers = new AtomicLong(), peerCleanups = new AtomicLong();
+            stalledClosed = new AtomicLong(), takeovers = new AtomicLong(), peerCleanups = new AtomicLong(),
+            detachStreaming = new AtomicLong();  // of usbDetach: the scanner went while video was streaming
+    // phone: time on external power vs battery (sampled once a second), worst thermal status (-1 unknown)
+    volatile long poweredMs, batteryMs;
+    volatile int thermalMax = -1;
     // latency
     final Hist xu = new Hist(), frameAge = new Hist();
     // link (whichever network carries the PC: Wi-Fi STA sampled; a Wi-Fi Direct GO has no per-client RSSI)
@@ -108,10 +112,18 @@ final class SessionStats {
                 pcDrops.get(), rtspCloses.get(), rtspErrors.get(), imuConnects.get()));
         sb.append(String.format(Locale.US, "Stalled sessions closed %d · taken over %d · closed on PC/peer loss %d%n",
                 stalledClosed.get(), takeovers.get(), peerCleanups.get()));
-        sb.append(String.format(Locale.US, "USB detach %d / attach %d (brown-outs %d) · Wi-Fi Direct joins %d / leaves %d · mirror connects %d%n",
-                usbDetach.get(), usbAttach.get(), brownouts.get(), p2pJoins.get(), p2pLeaves.get(), mirrorConnects.get()));
+        sb.append(String.format(Locale.US, "USB detach %d (%d while streaming) / attach %d (brown-outs %d) · Wi-Fi Direct joins %d / leaves %d · mirror connects %d%n",
+                usbDetach.get(), detachStreaming.get(), usbAttach.get(), brownouts.get(), p2pJoins.get(), p2pLeaves.get(), mirrorConnects.get()));
+        sb.append(String.format(Locale.US, "On battery %s of %s · worst thermal status %s%n",
+                dur(batteryMs), dur(poweredMs + batteryMs), thermalName(thermalMax)));
         sb.append("Scanner reply (XU) ").append(xu.fmt()).append(" · frame age ").append(frameAge.fmt());
         return sb.toString();
+    }
+
+    /** PowerManager.THERMAL_STATUS_* (0 none … 6 shutdown) in words; "unknown" below Android 10. */
+    static String thermalName(int status) {
+        String[] n = {"None", "Light", "Moderate", "Severe", "Critical", "Emergency", "Shutdown"};
+        return status >= 0 && status < n.length ? n[status] : "unknown";
     }
 
     static double pct(long part, long whole) {

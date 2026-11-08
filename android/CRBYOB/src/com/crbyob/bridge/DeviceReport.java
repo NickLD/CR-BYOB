@@ -5,7 +5,9 @@ import android.os.Build;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -142,6 +144,7 @@ final class DeviceReport {
                 int rate = s.staTx > 0 ? s.staTx : s.staLink;
                 if (rate > 0) d.append(", ").append(rate).append(" Mbit/s link rate");
             }
+            if ("eth".equals(s.advertise) && s.ethMbps > 0) d.append(", ").append(s.ethMbps).append(" Mbit/s link");
             d.append('\n');
         }
         if (streamed) {
@@ -149,16 +152,53 @@ final class DeviceReport {
             for (int i = 0; i < 3; i++) {
                 if (ss.streamingMsPer[i] <= 0) continue;
                 double fps = ss.sent[i] * 1000.0 / ss.streamingMsPer[i];
-                d.append(String.format(Locale.US, "- %s: %.1f fps, %.0f%% of captured frames sent%n",
+                d.append(String.format(Locale.US, "- %s: %.1f fps, %.0f%% of captured frames sent",
                         n[i], fps, SessionStats.pct(ss.sent[i], ss.captured[i])));
+                long dropped = ss.qdrops[i] + ss.skipped[i];
+                if (dropped > 0) d.append(", ").append(dropped).append(" dropped");
+                if (ss.reducedMs[i] > 0)                   // ½ or ⅓ rate because the link couldn't keep up
+                    d.append(String.format(Locale.US, ", at reduced rate %.0f%% of the time",
+                            SessionStats.pct(ss.reducedMs[i], ss.streamingMsPer[i])));
+                d.append('\n');
             }
             d.append(String.format(Locale.US, "- Data: avg %.0f Mbit/s, peak %.0f Mbit/s%n", ss.avgMbps(), ss.peakMbps));
             if (ss.rssiN > 0)
                 d.append(String.format(Locale.US, "- Wi-Fi signal during the session: avg %d dBm, worst %d dBm%n",
                         ss.rssiSum / ss.rssiN, ss.rssiMin));
-            d.append(String.format(Locale.US, "- Brown-outs %d, USB detach/attach %d/%d%n",
-                    ss.brownouts.get(), ss.usbDetach.get(), ss.usbAttach.get()));
+            if (ss.frameAge.count() > 0) {
+                d.append(String.format(Locale.US, "- Latency: frame age avg %.1f ms, p95 %.0f ms",
+                        ss.frameAge.avgMs(), ss.frameAge.pMs(0.95)));
+                if (ss.xu.count() > 0) d.append(String.format(Locale.US, "; scanner replies p95 %.0f ms", ss.xu.pMs(0.95)));
+                d.append('\n');
+            }
+            long onPower = ss.poweredMs, onBattery = ss.batteryMs;
+            if (onPower + onBattery > 0)
+                d.append("- Phone power: ").append(onBattery == 0 ? "external the whole session"
+                        : onPower == 0 ? "battery the whole session"
+                        : String.format(Locale.US, "on battery %.0f%% of the session", SessionStats.pct(onBattery, onPower + onBattery)))
+                        .append('\n');
+            // a deliberate unplug and a brown-out look the same to the app: when it happened tells them apart
+            long det = ss.usbDetach.get(), detStreaming = ss.detachStreaming.get(), onBatt = ss.brownouts.get();
+            d.append("- Scanner disconnects: ");
+            if (det == 0) d.append("none");
+            else {
+                d.append(detStreaming).append(" while streaming, ").append(det - detStreaming).append(" while not streaming");
+                if (onBatt > 0) d.append(" (").append(onBatt).append(" while the phone was on battery)");
+            }
+            d.append('\n');
+            List<String> also = new ArrayList<>();
+            count(also, ss.pcDrops.get(), "PC disconnect", "PC disconnects");
+            count(also, ss.rtspErrors.get(), "stream error", "stream errors");
+            count(also, ss.stalledClosed.get(), "stalled stream closed", "stalled streams closed");
+            count(also, ss.uvcErrors.get(), "USB frame error", "USB frame errors");
+            if (!also.isEmpty()) d.append("- Also counted: ").append(String.join(", ", also)).append('\n');
+            long mirror = ss.mirrorConnects.get();
+            d.append("- Mirror viewer: ").append(mirror == 0 ? "not used"
+                    : "used (" + mirror + (mirror == 1 ? " connection)" : " connections)")).append('\n');
+            if (ss.thermalMax >= 0)
+                d.append("- Phone heat (worst Android thermal status): ").append(SessionStats.thermalName(ss.thermalMax)).append('\n');
         }
+        if (s != null && s.soc != null && !s.soc.isEmpty()) d.append("- Phone chip: ").append(s.soc).append('\n');
         if (s != null && s.linkScore >= 0 && s.linkWord != null) d.append("- Link quality now: ").append(s.linkWord).append('\n');
         if (f.scanner.isEmpty()) d.append("- Scanner: not plugged in when this report was opened\n");
         if (unlisted) d.append("- Scanner USB ID: ").append(model.substring(4)).append(" (not in the app's model list: please say which model it is)\n");
@@ -206,6 +246,11 @@ final class DeviceReport {
         if (!f.scannerDetected && !d.scanner.isEmpty()) f.scanner = d.scanner;
         String notes = notesOf(d.details);
         if (!notes.isEmpty()) f.details = f.details.trim() + "\n" + notes + "\n";
+    }
+
+    /** "2 stream errors" / "1 PC disconnect", only when the count isn't zero. */
+    private static void count(List<String> out, long n, String one, String many) {
+        if (n > 0) out.add(n + " " + (n == 1 ? one : many));
     }
 
     private static String cap(String s) {

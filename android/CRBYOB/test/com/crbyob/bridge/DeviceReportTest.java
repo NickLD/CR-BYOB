@@ -83,6 +83,82 @@ public class DeviceReportTest {
         assertTrue(body, body.contains("### What happened\n\nMeasured by CR-BYOB"));
     }
 
+    /** A session with every diagnostic set: power, disconnects by phase, reduced rate, errors, latency, heat, chip. */
+    private static SessionStats troubledSession() {
+        SessionStats ss = new SessionStats();
+        ss.streamMs = 100_000;
+        ss.streamingMsPer[0] = 100_000;
+        ss.sent[0] = 2_500;
+        ss.captured[0] = 2_600;
+        ss.qdrops[0] = 60;
+        ss.skipped[0] = 40;
+        ss.reducedMs[0] = 12_000;
+        ss.poweredMs = 65_000;
+        ss.batteryMs = 35_000;
+        ss.usbDetach.set(7);
+        ss.usbAttach.set(7);
+        ss.detachStreaming.set(2);
+        ss.brownouts.set(7);
+        ss.pcDrops.set(1);
+        ss.rtspErrors.set(2);
+        ss.stalledClosed.set(1);
+        ss.uvcErrors.set(3);
+        ss.mirrorConnects.set(2);
+        for (int i = 0; i < 100; i++) ss.frameAge.add(10_000 + i * 200);   // 10..29.8 ms
+        for (int i = 0; i < 100; i++) ss.xu.add(3_000);
+        ss.thermalMax = 2;
+        return ss;
+    }
+
+    @Test
+    public void reportsTheDiagnostics() {
+        Dash.Snap s = otterOnWifi();
+        s.soc = "Qualcomm SM8550";
+        String d = DeviceReport.collect(s, troubledSession(), "x", "Phone").details;
+        assertTrue(d, d.contains("- IR L: 25.0 fps, 96% of captured frames sent, 100 dropped, at reduced rate 12% of the time\n"));
+        assertTrue(d, d.contains("- Phone power: on battery 35% of the session\n"));
+        assertTrue(d, d.contains("- Scanner disconnects: 2 while streaming, 5 while not streaming (7 while the phone was on battery)\n"));
+        assertTrue(d, d.contains("- Also counted: 1 PC disconnect, 2 stream errors, 1 stalled stream closed, 3 USB frame errors\n"));
+        assertTrue(d, d.contains("- Latency: frame age avg 19.9 ms, p95 29 ms; scanner replies p95 4 ms\n"));
+        assertTrue(d, d.contains("- Mirror viewer: used (2 connections)\n"));
+        assertTrue(d, d.contains("- Phone heat (worst Android thermal status): Moderate\n"));
+        assertTrue(d, d.contains("- Phone chip: Qualcomm SM8550\n"));
+    }
+
+    @Test
+    public void aQuietSessionStaysShort() {
+        SessionStats ss = new SessionStats();
+        ss.streamMs = 60_000;
+        ss.streamingMsPer[0] = 60_000;
+        ss.sent[0] = 1800;
+        ss.captured[0] = 1800;
+        ss.poweredMs = 60_000;
+        String d = DeviceReport.collect(otterOnWifi(), ss, "x", "Phone").details;
+        assertTrue(d, d.contains("- IR L: 30.0 fps, 100% of captured frames sent\n"));
+        assertTrue(d, d.contains("- Phone power: external the whole session\n"));
+        assertTrue(d, d.contains("- Scanner disconnects: none\n"));
+        assertTrue(d, d.contains("- Mirror viewer: not used\n"));
+        for (String absent : new String[]{"Also counted", "Latency", "Phone heat", "Phone chip", "dropped", "reduced rate"})
+            assertFalse(absent + " in\n" + d, d.contains(absent));
+
+        ss.poweredMs = 0;
+        ss.batteryMs = 60_000;
+        assertTrue(DeviceReport.collect(otterOnWifi(), ss, "x", "Phone").details.contains("- Phone power: battery the whole session\n"));
+    }
+
+    @Test
+    public void ethernetShowsItsLinkSpeed() {
+        Dash.Snap s = otterOnWifi();
+        s.advertise = "eth";
+        s.staConnected = false;
+        s.ethMbps = 100;
+        String d = DeviceReport.collect(s, new SessionStats(), "x", "Phone").details;
+        assertTrue(d, d.contains("- Connection: Ethernet, 100 Mbit/s link\n"));
+        s.ethMbps = -1;                                // unreadable: no speed, no guess
+        d = DeviceReport.collect(s, new SessionStats(), "x", "Phone").details;
+        assertTrue(d, d.contains("- Connection: Ethernet\n"));
+    }
+
     @Test
     public void neverLeaksSerialSsidOrAddresses() {
         Dash.Snap s = otterOnWifi();

@@ -8,6 +8,8 @@ import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.BatteryManager;
+import android.os.Build;
+import android.os.PowerManager;
 
 import java.net.Inet4Address;
 import java.net.InetAddress;
@@ -76,6 +78,8 @@ final class Dash {
         boolean advertiseDown;          // the network locked at Start has gone away
         String ethName, ethIp, lanIp;
         String ethNoIp;          // wired adapter with link up but no IPv4 (DHCP not done / failed)
+        int ethMbps = -1;        // wired link speed from sysfs, -1 when Android doesn't let the app read it
+        String soc = SOC;        // phone chip, for the device report
         boolean scanner;
         boolean plugged, plugProbed;
         String idleModelStatus;         // bridge off: the plugged-in scanner's scanners.json status (sampleScannerIdle)    // bridge off: a scanner is on USB / its descriptors were read (sampleScannerIdle)
@@ -108,6 +112,7 @@ final class Dash {
     private Boolean wasScanner, wasPc, wasStreaming, wasPowered;
     private int wasK = 1, wasP2pClients = -1, wasScore = -2, scoreHold;
     private boolean brownOut;
+    private PowerManager power;         // thermal status (Android 10+)
 
     Dash(Bridge b) {
         this.b = b;
@@ -328,6 +333,20 @@ final class Dash {
     }
 
     /** Wired (eth, usb, rndis) and Wi-Fi IPv4 addresses. */
+    /** "Qualcomm SM8550" (Android 12+), "" before: USB behavior follows the chipset more than the brand. */
+    static final String SOC = Build.VERSION.SDK_INT >= 31
+            ? (Build.SOC_MANUFACTURER + " " + Build.SOC_MODEL).replace(Build.UNKNOWN, "").trim() : "";
+
+    /** Link speed of a wired interface in Mbit/s, or -1 (no link, or sysfs closed to apps on this phone). */
+    static int linkMbps(String iface) {
+        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader("/sys/class/net/" + iface + "/speed"))) {
+            int v = Integer.parseInt(r.readLine().trim());
+            return v > 0 ? v : -1;
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
     static void sampleInterfaces(Snap s) {
         try {
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
@@ -340,7 +359,7 @@ final class Dash {
                     if (wired && s.ethIp == null) s.ethNoIp = n;
                     continue;
                 }
-                if (n.startsWith("eth") || n.startsWith("usb") || n.startsWith("rndis")) { s.ethName = n; s.ethIp = ip; }
+                if (wired) { s.ethName = n; s.ethIp = ip; s.ethMbps = linkMbps(n); }
                 if (n.startsWith("wlan")) s.lanIp = ip;
             }
         } catch (Exception ignored) {
@@ -527,6 +546,12 @@ final class Dash {
                     : plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS ? "wireless charger" : "battery";
             int lvl = bat.getIntExtra(BatteryManager.EXTRA_LEVEL, -1), sc = bat.getIntExtra(BatteryManager.EXTRA_SCALE, 100);
             s.battery = lvl >= 0 ? Math.round(lvl * 100f / sc) : -1;
+            if (s.powered) ss.poweredMs += dtMs;
+            else ss.batteryMs += dtMs;
+        }
+        if (Build.VERSION.SDK_INT >= 29) {
+            if (power == null) power = (PowerManager) b.ctx.getSystemService(Context.POWER_SERVICE);
+            if (power != null) ss.thermalMax = Math.max(ss.thermalMax, power.getCurrentThermalStatus());
         }
 
         // ---- events from transitions
@@ -539,6 +564,7 @@ final class Dash {
             } else {
                 brownOut = !s.powered;
                 SessionStats.cur.usbDetach.incrementAndGet();
+                if (Boolean.TRUE.equals(wasStreaming)) SessionStats.cur.detachStreaming.incrementAndGet();
                 if (brownOut) SessionStats.cur.brownouts.incrementAndGet();
                 event(brownOut ? "Scanner unplugged while the phone was on battery (likely brown-out)" : "Scanner unplugged");
             }
