@@ -10,6 +10,8 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-11-08
+
 ### Added
 - If CR-BYOB crashed, stopped responding, or was closed by Android while you were using it, the dashboard
   says so the next time you open it, once per crash, and offers to send a device report about it.

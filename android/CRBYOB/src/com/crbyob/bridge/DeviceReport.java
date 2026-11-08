@@ -254,7 +254,8 @@ final class DeviceReport {
             d.append("- Mirror viewer: ").append(mirror == 0 ? "not used"
                     : "used (" + mirror + (mirror == 1 ? " connection)" : " connections)")).append('\n');
             if (ss.thermalMax >= 0)
-                d.append("- Phone heat (worst Android thermal status): ").append(SessionStats.thermalName(ss.thermalMax)).append('\n');
+                d.append("- Phone heat: ").append(ss.thermalMax == 0 ? "normal"      // Android's thermal status, worst seen
+                        : SessionStats.thermalName(ss.thermalMax).toLowerCase(Locale.ROOT) + " at worst (Android's thermal status)").append('\n');
         }
     }
 

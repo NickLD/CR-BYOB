@@ -121,7 +121,7 @@ public class DeviceReportTest {
         assertTrue(d, d.contains("- Also counted: 1 PC disconnect, 2 stream errors, 1 stalled stream closed, 3 USB frame errors\n"));
         assertTrue(d, d.contains("- Latency: frame age avg 19.9 ms, p95 29 ms; scanner replies p95 4 ms\n"));
         assertTrue(d, d.contains("- Mirror viewer: used (2 connections)\n"));
-        assertTrue(d, d.contains("- Phone heat (worst Android thermal status): Moderate\n"));
+        assertTrue(d, d.contains("- Phone heat: moderate at worst (Android's thermal status)\n"));
         assertTrue(d, d.contains("- Phone chip: Qualcomm SM8550\n"));
     }
 
@@ -135,6 +135,9 @@ public class DeviceReportTest {
         ss.poweredMs = 60_000;
         String d = DeviceReport.collect(otterOnWifi(), ss, "x", "Phone").details;
         assertTrue(d, d.contains("- IR L: 30.0 fps, 100% of captured frames sent\n"));
+        ss.thermalMax = 0;
+        assertTrue(DeviceReport.collect(otterOnWifi(), ss, "x", "Phone").details.contains("- Phone heat: normal\n"));
+        ss.thermalMax = -1;                       // unknown (Android 9 and older): no line
         assertTrue(d, d.contains("- Phone power: external the whole session\n"));
         assertTrue(d, d.contains("- Scanner disconnects: none\n"));
         assertTrue(d, d.contains("- Mirror viewer: not used\n"));
