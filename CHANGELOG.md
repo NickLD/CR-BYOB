@@ -10,6 +10,18 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-11-08
+
+### Added
+- Troubleshooting: "The Wi-Fi Direct network isn't in Creality Scan's Wi-Fi list?" That list only shows
+  names starting with Creality's own (`Creality_Scan`, `Ferret`, `Lite Bridge`, `Pika_`, `Sermoon P1`), and
+  Android makes networks created by an app start with `DIRECT-`, so the bridge's network never appears there.
+
+### Changed
+- Wi-Fi Direct: the dashboard now says to join the network from the PC's Wi-Fi menu (the taskbar on
+  Windows), not from Creality Scan, and links to the new question. Once the PC has joined, the bridge shows
+  up in Creality Scan by itself.
+
 ## [0.2.2] - 2026-11-07
 
 ### Added

@@ -147,7 +147,9 @@ flowchart LR
    install it.
 2. Open **CR-BYOB**, allow the permissions it explains, and plug in the scanner.
 3. Pick a connection ([which one?](#choosing-a-connection)) and tap **Start**. For Wi-Fi Direct, join the
-   network shown in the app from the PC.
+   network shown in the app from the PC's Wi-Fi menu, like any Wi-Fi network. Creality Scan's own Wi-Fi
+   list won't show it ([why](docs/using-the-app.md#wi-fi-direct-not-in-creality-scan)). Once the PC is on
+   it, the bridge shows up in Creality Scan by itself.
 4. Start Creality Scan on the PC (or CrealityScan on the phone). The bridge shows up like a Scan Bridge.
 
 More in [Using the app](docs/using-the-app.md).

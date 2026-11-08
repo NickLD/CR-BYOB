@@ -638,7 +638,8 @@ final class Dash {
                 s.heroSub = "Discovery is set to Wi-Fi Direct only, but Wi-Fi Direct is off: the PC cannot find the bridge.";
             else if ("p2p".equals(s.advertise) && s.p2pClients == 0) {
                 s.heroText = "No PC on Wi-Fi Direct yet";
-                s.heroSub = "On the PC, join " + (s.p2pSsid != null ? s.p2pSsid : "the Wi-Fi Direct network") + " (password below).";
+                s.heroSub = "On the PC, join " + (s.p2pSsid != null ? s.p2pSsid : "the Wi-Fi Direct network")
+                        + " from the Wi-Fi menu, not from Creality Scan (password below).";
             } else if ("p2p".equals(s.advertise)) {
                 s.heroText = s.p2pClients == 1 ? "PC joined Wi-Fi Direct" : s.p2pClients + " devices joined Wi-Fi Direct";
                 s.heroSub = "Start Creality Scan on the PC.";

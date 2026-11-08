@@ -737,6 +737,7 @@ public final class MainActivity extends Activity {
         p2pBox.addView(editBtn, el);
         p2pHint = text(14, BLUE, false);
         p2pHint.setPadding(0, dp(8), 0, 0);
+        linkTo(p2pHint, Docs.HELP_P2P_JOIN);    // users look for the network in Creality Scan's own Wi-Fi list
         p2pBox.addView(p2pHint);
         // amber banner: phone is on Wi-Fi Direct and a Wi-Fi network at once
         p2pDualBanner = new LinearLayout(this);
@@ -1667,8 +1668,10 @@ public final class MainActivity extends Activity {
             p2pStatus.setBackground(rounded(bg, dp(10)));
             p2pSsid.setAlpha(up ? 1f : 0.55f);
             p2pPass.setAlpha(up ? 1f : 0.55f);
-            p2pHint.setText(up ? "On the PC: join this Wi-Fi network. The bridge then appears in Creality Scan by itself."
-                    : "After you tap Start, join this network from the PC. The bridge then appears in Creality Scan by itself.");
+            p2pHint.setText(withLink((up ? "On the PC, join this network" : "After you tap Start, join this network on the PC")
+                    + " from the Wi-Fi menu (taskbar on Windows), like any other Wi-Fi network. Creality Scan's own"
+                    + " Wi-Fi list won't show it: once the PC has joined, the bridge shows up in Creality Scan by itself.",
+                    "Why isn't it in Creality Scan ›", false));
             editBtn.setEnabled(!running);
             editBtn.setAlpha(running ? 0.4f : 1f);
             editBtn.setText(running ? "Edit Wi-Fi Direct settings (stop the bridge first)" : "Edit Wi-Fi Direct settings");
