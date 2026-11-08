@@ -32,6 +32,7 @@ final class Docs {
     static final String HELP_POWER = "scanner-keeps-disconnecting";
     static final String HELP_SLOW = "low-frame-rate";
     static final String HELP_DUAL = "wi-fi-direct-and-wi-fi-at-the-same-time";
+    static final String HELP_P2P_JOIN = "wi-fi-direct-not-in-creality-scan";
     static final String HELP_ETHERNET = "ethernet-has-no-ip-address";
     static final String HELP_MODEL = "scanner-model-warning";
     static final String HELP_NETWORK = "choosing-a-network";

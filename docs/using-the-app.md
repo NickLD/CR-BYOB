@@ -43,12 +43,18 @@ stop it to change.
 
 | Choice | Use it for |
 |---|---|
-| **Wi-Fi Direct** | The phone makes its own network, like the official Scan Bridge. Join it from the PC with the name and password shown, then start Creality Scan. |
+| **Wi-Fi Direct** | The phone makes its own network, like the official Scan Bridge. Join it from the PC's Wi-Fi menu with the name and password shown, then start Creality Scan. |
 | **Your Wi-Fi** | Phone and PC on the same home network. Needs a strong 5 GHz connection for the full frame rate. |
 | **Ethernet** | Shown when a USB Ethernet adapter (or a hub's Ethernet port) is connected. The most reliable choice: no radio interference, full rate. Use Gigabit. |
 | **This phone only (for CrealityScan mobile app)** | Scan on the phone itself with Creality's CrealityScan app, no PC. Nothing on the network can find or reach the bridge, and Wi-Fi speed doesn't matter. |
 
 The bridge answers on exactly one network at a time: a PC that saw it on two would hang at Preview.
+
+> [!NOTE]
+> **The Wi-Fi Direct network won't appear in Creality Scan's Wi-Fi list.** Join it on the PC the way you join
+> any Wi-Fi network: on Windows, the Wi-Fi icon in the taskbar, then the name and password the app shows. Once
+> the PC is on it, the bridge shows up in Creality Scan by itself, as it would on your home network.
+> [Why it's not in the list](#wi-fi-direct-not-in-creality-scan).
 
 **Wi-Fi Direct details.** The network name is `DIRECT-SB-CRBYOB-` plus 4 characters unique to the phone, and the
 password is shown below it (both copyable). *Edit Wi-Fi Direct settings* (while stopped) changes the part after
@@ -214,6 +220,21 @@ within a second once it's on USB 3.
 - **Same network.** The PC must be on the network chosen under `Run streaming server on`.
 - **Not also on USB.** Creality Scan must not also see the scanner plugged into the same PC.
 - **Restarted the bridge?** Restart Creality Scan too: it reads the bridge's details once per session.
+
+</details>
+
+<details>
+<summary><a id="wi-fi-direct-not-in-creality-scan"></a>The Wi-Fi Direct network isn't in Creality Scan's Wi-Fi list?</summary>
+
+That's expected. Creality Scan's own Wi-Fi list only shows networks whose names start with `Creality_Scan`,
+`Ferret`, `Lite Bridge`, `Pika_` or `Sermoon P1` (exact case; the official Scan Bridge is
+`Creality_Scan_Pocket_…`). CR-BYOB can't use such a name: Android only lets apps create a Wi-Fi network as a
+Wi-Fi Direct group, and Android requires those names to start with `DIRECT-`.
+
+- **Join it from the PC's own Wi-Fi menu instead.** On Windows, click the Wi-Fi icon in the taskbar, pick
+  `DIRECT-SB-CRBYOB-…` and enter the password the app shows.
+- **Then start Creality Scan.** The bridge appears there by itself, found the same way as on your home
+  network. If it doesn't, see [Creality Scan doesn't find the bridge?](#creality-scan-doesnt-find-the-bridge)
 
 </details>
 
