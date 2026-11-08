@@ -73,6 +73,21 @@ final class ReportPrompt {
         return lastStreamingAt <= 0 || now - lastStreamingAt >= ENDED_FOR_MS;
     }
 
+    /** Shared pref: exit timestamp of the newest crash the "stopped unexpectedly" card was shown for. */
+    static final String PREF_CRASH_SEEN = "crash_prompt_seen";
+
+    /** The crash card: a problem exit (DeviceReport.newestProblem) newer than the last one it was shown for. */
+    static boolean crashDue(long exitTs, long seenTs) {
+        return exitTs > 0 && exitTs > seenTs;
+    }
+
+    /** exitLine: DeviceReport.exitLine, e.g. "crashed, 5 min ago". */
+    static String crashMessage(String exitLine) {
+        return "CR-BYOB stopped unexpectedly: " + exitLine + ". Tap here to send a device report about it: it includes how the "
+                + "app stopped, and you can add what you were doing. The measurements of that session are lost, so "
+                + "say what happened.";
+    }
+
     static String message(String missing) {
         return "We don't have a compatibility report for " + missing + " yet. Tap here to help improve CR-BYOB with "
                 + "a device report now, or scroll to the bottom of the app to send one another time. We won't show "

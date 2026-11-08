@@ -203,17 +203,33 @@ public class DeviceReportTest {
         assertEquals("other (reason 99), 1 min ago", DeviceReport.exitLine(99, 60_000L));
     }
 
+    private static final int FG = 100, FG_SERVICE = 125, CACHED = 400;   // RunningAppProcessInfo.IMPORTANCE_*
+
     /** A crash shouldn't hide behind a later normal close (reopened, then swiped away). Newest first. */
     @Test
     public void lastExitPicksTheLatestProblemOfTheDay() {
         long min = 60_000L, h = 60 * min;
         // swiped away 5 min ago, crashed 40 min ago, low memory 3 h ago
-        assertEquals("crashed, 40 min ago",
-                DeviceReport.lastProblemExit(new int[]{10, 4, 3}, new long[]{5 * min, 40 * min, 3 * h}));
+        assertEquals("crashed, 40 min ago", DeviceReport.lastProblemExit(
+                new int[]{10, 4, 3}, new int[]{FG, FG, FG_SERVICE}, new long[]{5 * min, 40 * min, 3 * h}));
         // only normal closes today, a crash two days ago: nothing to blame
-        assertEquals("no crash or kill by Android in the last 24 h",
-                DeviceReport.lastProblemExit(new int[]{1, 10, 16, 4}, new long[]{min, 2 * h, 5 * h, 48 * h}));
-        assertEquals(null, DeviceReport.lastProblemExit(new int[0], new long[0]));   // no history at all
+        assertEquals("no crash or kill by Android in the last 24 h", DeviceReport.lastProblemExit(
+                new int[]{1, 10, 16, 4}, new int[]{FG, FG, CACHED, FG}, new long[]{min, 2 * h, 5 * h, 48 * h}));
+        assertEquals(null, DeviceReport.lastProblemExit(new int[0], new int[0], new long[0]));   // no history at all
+    }
+
+    /** Android clearing a cached background app is routine; killing it while the bridge ran isn't. Crashes always count. */
+    @Test
+    public void killsCountOnlyWhileTheAppWasInUse() {
+        assertFalse("low memory, cached", DeviceReport.isProblem(3, CACHED));
+        assertTrue("low memory, bridge running", DeviceReport.isProblem(3, FG_SERVICE));
+        assertTrue("crash, even in the background", DeviceReport.isProblem(4, CACHED));
+        assertTrue("ANR", DeviceReport.isProblem(6, CACHED));
+        assertFalse("swiped away", DeviceReport.isProblem(10, FG));
+        assertFalse("app update", DeviceReport.isProblem(16, FG_SERVICE));
+        long min = 60_000L;
+        assertEquals(1, DeviceReport.newestProblem(new int[]{3, 13, 4}, new int[]{CACHED, FG_SERVICE, FG}, new long[]{min, 2 * min, 3 * min}));
+        assertEquals(-1, DeviceReport.newestProblem(new int[]{3, 4}, new int[]{CACHED, FG}, new long[]{min, 25 * 60 * min}));
     }
 
     /** This phone only: the phone's own Wi-Fi and any Ethernet adapter play no part, so neither shows up. */

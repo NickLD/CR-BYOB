@@ -277,6 +277,7 @@ public final class MainActivity extends Activity {
 
         buildHeader(root);
         buildReportPrompt(root);
+        buildCrashPrompt(root);
         buildActivity(root);
         root.removeView(linkCard);                                   // Link quality above Streams
         root.addView(linkCard, root.indexOfChild(streamsCard));
@@ -1192,6 +1193,67 @@ public final class MainActivity extends Activity {
         show(reportCard, show);
     }
 
+    // ------------------------------------------------------------------ "CR-BYOB stopped unexpectedly" (crash card)
+    private LinearLayout crashCard;
+    private TextView crashText;
+    private long crashTs;                  // exit timestamp the card is about
+
+    private void buildCrashPrompt(LinearLayout root) {
+        crashCard = card(root, null);
+        android.graphics.drawable.GradientDrawable bg = rounded(CARD, dp(16));
+        bg.setStroke(Math.max(1, dp(1.5f)), (AMBER & 0x00FFFFFF) | 0x99000000);
+        crashCard.setBackground(bg);
+        LinearLayout row = new LinearLayout(this);
+        TextView title = text(16, TEXT, true);
+        title.setText("CR-BYOB stopped unexpectedly");
+        row.addView(title, weight(1));
+        TextView close = text(18, SUB, false);
+        close.setText("✕");
+        close.setPadding(dp(12), 0, dp(4), 0);
+        close.setContentDescription("Dismiss");
+        close.setOnClickListener(v -> finishCrashPrompt(false));
+        row.addView(close);
+        crashCard.addView(row);
+        crashText = text(14, TEXT, false);
+        crashText.setPadding(0, dp(6), 0, 0);
+        crashCard.addView(crashText);
+        crashCard.setOnClickListener(v -> finishCrashPrompt(true));
+        crashCard.setVisibility(View.GONE);
+        updateCrashPrompt(null);
+    }
+
+    /**
+     * Shows the card when the last run crashed, hung, or was killed by Android while in use (DeviceReport.isProblem),
+     * within the last 24 h and not shown before for that exit. testLine (debug): show it now with that text.
+     */
+    private void updateCrashPrompt(String testLine) {
+        String line = testLine;
+        long ts = testLine != null ? System.currentTimeMillis() : 0;
+        DeviceReport.Exits e = testLine == null ? DeviceReport.exits(this) : null;
+        if (e != null) {
+            long[] ages = e.ages();
+            int i = DeviceReport.newestProblem(e.reasons, e.importance, ages);
+            long seen = getSharedPreferences("bridge", MODE_PRIVATE).getLong(ReportPrompt.PREF_CRASH_SEEN, 0);
+            if (i >= 0 && ReportPrompt.crashDue(e.timestamps[i], seen)) {
+                line = DeviceReport.exitLine(e.reasons[i], ages[i]);
+                ts = e.timestamps[i];
+            }
+        }
+        if (line == null) return;
+        crashTs = ts;
+        crashText.setText(ReportPrompt.crashMessage(line));
+        if (crashCard.getVisibility() != View.VISIBLE) BLog.log("crash_prompt_shown", "exit", line);
+        crashCard.setVisibility(View.VISIBLE);
+    }
+
+    /** Tapped (opens the report) or dismissed: either way this exit is answered and its card won't come back. */
+    private void finishCrashPrompt(boolean report) {
+        getSharedPreferences("bridge", MODE_PRIVATE).edit().putLong(ReportPrompt.PREF_CRASH_SEEN, crashTs).apply();
+        BLog.log("crash_prompt_" + (report ? "tapped" : "dismissed"));
+        crashCard.setVisibility(View.GONE);
+        if (report) DeviceReport.open(this);
+    }
+
     /**
      * Debug builds: act as if this phone and scanner had no compatibility report (the first-scan card and the
      * unverified-scanner warning), to test them on a covered setup. --ez pretend_unreported true|false, persisted.
@@ -1224,6 +1286,11 @@ public final class MainActivity extends Activity {
             // --ez report_prompt_reset true: forget that it was answered
             if (i.getBooleanExtra("report_prompt_reset", false)) e.remove(ReportPrompt.PREF_DONE);
             if (i.getBooleanExtra("report_prompt_test", false)) promptTest = true;
+            // --ez crash_prompt_test true: show the "stopped unexpectedly" card now, with a made-up crash
+            if (i.getBooleanExtra("crash_prompt_test", false) && crashCard != null)
+                updateCrashPrompt(DeviceReport.exitLine(4, 5 * 60_000L));
+            // --ez crash_prompt_reset true: forget which crash it was last shown for
+            if (i.getBooleanExtra("crash_prompt_reset", false)) e.remove(ReportPrompt.PREF_CRASH_SEEN);
             if (i.hasExtra("pretend_unreported")) e.putBoolean("pretend_unreported", i.getBooleanExtra("pretend_unreported", false));
             e.apply();
             // --es update_repo owner/name points the GitHub update check elsewhere ("" resets), --ez update_check true runs it

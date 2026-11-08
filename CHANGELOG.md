@@ -10,6 +10,10 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+### Added
+- If CR-BYOB crashed, stopped responding, or was closed by Android while you were using it, the dashboard
+  says so the next time you open it, once per crash, and offers to send a device report about it.
+
 ### Changed
 - Device reports say more, so problems are easier to pin down. As before, they never include the serial
   number, network names, IP addresses or the log.

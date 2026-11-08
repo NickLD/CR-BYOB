@@ -283,40 +283,75 @@ final class DeviceReport {
             if (pm != null) h.unrestricted = pm.isIgnoringBatteryOptimizations(c.getPackageName());
         } catch (Exception ignored) {
         }
-        if (Build.VERSION.SDK_INT >= 30) {
-            try {
-                android.app.ActivityManager am = (android.app.ActivityManager) c.getSystemService(android.content.Context.ACTIVITY_SERVICE);
-                // Android keeps these after the process dies, so the next run can see how the last ones ended
-                List<android.app.ApplicationExitInfo> l = am.getHistoricalProcessExitReasons(c.getPackageName(), 0, 10);
-                int[] reasons = new int[l.size()];
-                long[] ages = new long[l.size()];
-                long now = System.currentTimeMillis();
-                for (int i = 0; i < l.size(); i++) {
-                    reasons[i] = l.get(i).getReason();
-                    ages[i] = now - l.get(i).getTimestamp();
-                }
-                h.lastExit = lastProblemExit(reasons, ages);
-            } catch (Exception ignored) {
-            }
-        }
+        Exits e = exits(c);
+        if (e != null) h.lastExit = lastProblemExit(e.reasons, e.importance, e.ages());
         return h;
     }
 
+    /** How the app's last processes ended, newest first (ApplicationExitInfo, Android 11+). */
+    static final class Exits {
+        int[] reasons = new int[0], importance = new int[0];
+        long[] timestamps = new long[0];
+
+        long[] ages() {
+            long now = System.currentTimeMillis();
+            long[] a = new long[timestamps.length];
+            for (int i = 0; i < a.length; i++) a[i] = now - timestamps[i];
+            return a;
+        }
+    }
+
+    /** Android keeps these after the process dies, so the next run can see how the last ones ended. Null below 11. */
+    static Exits exits(android.content.Context c) {
+        if (Build.VERSION.SDK_INT < 30) return null;
+        try {
+            android.app.ActivityManager am = (android.app.ActivityManager) c.getSystemService(android.content.Context.ACTIVITY_SERVICE);
+            List<android.app.ApplicationExitInfo> l = am.getHistoricalProcessExitReasons(c.getPackageName(), 0, 10);
+            Exits e = new Exits();
+            e.reasons = new int[l.size()];
+            e.importance = new int[l.size()];
+            e.timestamps = new long[l.size()];
+            for (int i = 0; i < l.size(); i++) {
+                e.reasons[i] = l.get(i).getReason();
+                e.importance[i] = l.get(i).getImportance();
+                e.timestamps[i] = l.get(i).getTimestamp();
+            }
+            return e;
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
     /**
-     * The newest exit in the last 24 h that points at a problem (crash, ANR, killed by Android), newest first in
-     * the arrays; a note when there's none; null with no history. Normal closes (the app itself, the user, an
-     * update, a permission change) are skipped, so a crash doesn't hide behind a later swipe-away.
+     * Did this exit point at a problem? Crashes, ANRs and failed starts always do. Android killing the app counts
+     * only while it was in use (importance VISIBLE = 200 or better: the dashboard open or the bridge's foreground
+     * service running); clearing a cached background app is routine. Normal closes never count.
      */
-    static String lastProblemExit(int[] reasons, long[] agesMs) {
-        if (reasons.length == 0) return null;
+    static boolean isProblem(int reason, int importance) {
+        switch (reason) {
+            case 4: case 5: case 6: case 7: return true;                          // crash, native crash, ANR, start
+            case 1: case 8: case 10: case 11: case 15: case 16: return false;     // itself, permission, user, update
+            default: return importance > 0 && importance <= 200;                  // killed by Android
+        }
+    }
+
+    /** Index of the newest problem exit within the last 24 h (arrays newest first), or -1. */
+    static int newestProblem(int[] reasons, int[] importance, long[] agesMs) {
         for (int i = 0; i < reasons.length; i++) {
             if (agesMs[i] > 24 * 3_600_000L) break;
-            switch (reasons[i]) {
-                case 1: case 8: case 10: case 11: case 15: case 16: continue;   // normal ways to close
-                default: return exitLine(reasons[i], agesMs[i]);
-            }
+            if (isProblem(reasons[i], importance[i])) return i;
         }
-        return "no crash or kill by Android in the last 24 h";
+        return -1;
+    }
+
+    /**
+     * The newest problem exit of the last 24 h in words; a note when there's none; null with no history. Normal
+     * closes are skipped, so a crash doesn't hide behind a later swipe-away.
+     */
+    static String lastProblemExit(int[] reasons, int[] importance, long[] agesMs) {
+        if (reasons.length == 0) return null;
+        int i = newestProblem(reasons, importance, agesMs);
+        return i < 0 ? "no crash or kill by Android in the last 24 h" : exitLine(reasons[i], agesMs[i]);
     }
 
     /**
