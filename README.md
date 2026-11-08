@@ -50,7 +50,7 @@ finds it over the network like the real thing.
   <br>
   <sub>Left: scanning a die grinder in a detached workshop, a separate building from the scanning PC, over a
   shared network. All three streams run at the full 15 fps. Right: the handheld rig, with the Otter, a power
-  bank, a USB-C hub and the phone on a 3D-printed grip.</sub>
+  bank, a USB-C hub and the phone on a 3D-printed grip (<a href="docs/setups.md">parts and model</a>).</sub>
 </p>
 
 <p align="center">
@@ -163,6 +163,7 @@ More in [Using the app](docs/using-the-app.md).
 
 - [Using the app](docs/using-the-app.md): networks, dashboard, mirror viewer, troubleshooting
 - [Phone compatibility](docs/phones.md): per-phone results on each connection
+- [Setups](docs/setups.md): real rigs, with parts lists and 3D-printable mounts
 - [Adding or fixing a scanner model](docs/adding-a-scanner-model.md)
 - [How it works](docs/how-it-works.md)
 - [Building from source](docs/building.md)
