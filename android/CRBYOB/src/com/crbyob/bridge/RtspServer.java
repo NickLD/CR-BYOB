@@ -476,7 +476,9 @@ final class RtspServer {
                 RleCodec rle = synth != null && synth.equals("RLE ")
                         ? new RleCodec(p.width, p.height, bridge.rleThreshold(), model.rlePadTo) : null;
                 IrEncoder enc = irJpeg ? new IrJpeg(p.width, p.height, jpegQuality) : rle;
-                boolean gate = isIr && !irJpeg;      // paired IR decimation (IrGate); off in the IR-JPEG test mode
+                // paired IR decimation (IrGate): on for raw, RLE and the Raptor's MJPG (its speckle depth needs
+                // left/right pairs); off only in the ir_jpeg_over_y8 test mode
+                boolean gate = isIr && (!irJpeg || synth != null);
                 BLog.log("stream_start", "port", port, "node", "VS" + vs.iface, "type", stype, "profile", prof, "mirror", false,
                         "ir_jpeg", irJpeg, "quality", irJpeg ? (Object) jpegQuality : null, "synth", synth,
                         "rle_threshold", rle != null ? (Object) rle.threshold : null);
