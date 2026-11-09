@@ -481,6 +481,7 @@ final class RtspServer {
                         "ir_jpeg", irJpeg, "quality", irJpeg ? (Object) jpegQuality : null, "synth", synth,
                         "rle_threshold", rle != null ? (Object) rle.threshold : null);
                 if (rle != null) prof = prof + "->RLE";
+                else if (irJpeg) prof = prof + "->JPEG";
                 statusText = "[" + stype + " " + prof.trim() + "]";
                 stat.active++;
                 stat.peer = conn.getInetAddress().getHostAddress();
