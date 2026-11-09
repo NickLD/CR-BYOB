@@ -180,6 +180,10 @@ public final class HostServer {
                 note[0] = "raw-finish";
                 return Hp.reply(op, reqId);
             }
+            if (b.isLineScan(op, prop)) {            // Raptor IR frame light type (0xC5/0xC6)
+                note[0] = "line-scan";
+                return b.lineScan(op, reqId, prop, payload, frame);
+            }
             byte[] r = b.bridgeProps(op, reqId, prop, payload);
             if (r == null) r = b.controls.handle(op, reqId, prop, payload);
             if (r != null) {

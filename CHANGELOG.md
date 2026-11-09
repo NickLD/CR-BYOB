@@ -10,6 +10,27 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-11-09
+
+### Added
+- Device reports can include the log, and do by default. Opened in the GitHub app, the report's Log field gets
+  the recent log, as much as GitHub allows (around 500 lines), including lines from before a restart or crash.
+  Opened in a browser, whose links are much shorter, it gets a digest (the scanner setup and the latest events
+  that matter), and the whole log is saved to Downloads as a zip for you to attach. Serial numbers, Wi-Fi names,
+  passwords, MAC and IP addresses are removed. Thanks to @ravngr for pointing out that the log couldn't be
+  copied.
+- *Export log* under Events on the dashboard shares the same zip at any time.
+
+### Changed
+- The device report link now carries only what the app you open it in reads (the GitHub app or the web form),
+  which leaves room for the log.
+
+- A step closer to CR-Scan Raptor support. The first Raptor report showed Creality Scan stopping before the
+  preview started; the bridge now handles the Raptor-specific setting behind that, and passes on whether each
+  IR frame was lit by the laser lines or infrared. Not confirmed on a Raptor yet. Thanks to @ravngr for
+  testing and for the log that pinned it down. If you have any Raptor-series scanner (Raptor, Raptor X,
+  Raptor Pro, Raptor Pro Max), a device report helps, whether it works or not.
+
 ## [0.2.4] - 2026-11-08
 
 ### Added

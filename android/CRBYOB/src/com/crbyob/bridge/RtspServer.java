@@ -484,6 +484,12 @@ final class RtspServer {
 
                 byte[] hdr = new byte[34];
                 int hdrLen = isIr ? 34 : 26;
+                // Raptor: each IR frame's light type (laser lines vs infrared) goes to the PC in the header, and
+                // frames of another type than the PC asked for (props 0xC5/0xC6) are left out, as cameraServer does
+                boolean lightTagged = isIr && !model.irLightTypes.isEmpty();
+                int lightSide = stype == 7 ? 1 : 0;              // IR_RIGHT: 0xC6, IR / IR_LEFT: 0xC5
+                long[] lightCount = new long[6];                 // types 0..4, then untagged
+                long lightFiltered = 0;
                 byte[] pkt = new byte[4 + 12 + RTP_CHUNK];
                 long n = 0, sent = 0, t0 = System.nanoTime();
                 double idle = 0;
@@ -520,6 +526,18 @@ final class RtspServer {
                         stat.skipped.incrementAndGet();
                         continue;
                     }
+                    int light = 0;
+                    if (lightTagged) {
+                        Integer t = f.meta >= 0 ? model.irLightTypes.get(f.meta) : null;
+                        lightCount[t == null ? 5 : Math.max(0, Math.min(4, t))]++;
+                        if (t != null) light = t;
+                        int want = bridge.irLightRequest(lightSide);
+                        if (t != null && !Bridge.allLightTypes(want) && t != want) {
+                            cap.release(f);
+                            lightFiltered++;
+                            continue;
+                        }
+                    }
                     byte[] data = f.data;
                     int dlen = f.len;
                     long tsUs = f.tsUs;
@@ -542,7 +560,7 @@ final class RtspServer {
                         Hp.putU32(hdr, 22, p.height);
                         if (isIr) {
                             Hp.putU32(hdr, 26, dlen);
-                            Hp.putU32(hdr, 30, 0);
+                            Hp.putU32(hdr, 30, light);
                         }
                         int total = hdrLen + dlen;
                         int rtpTs = (int) (tsUs * 9 / 100);
@@ -593,7 +611,10 @@ final class RtspServer {
                                 "enc_kb", es != null && es[0] > 0 ? (Object) (es[1] / es[0] / 1024) : null,
                                 "enc_ms", es != null && es[0] > 0 ? (Object) (Math.round(es[2] / 1e5 / es[0]) / 10.0) : null,
                                 "write_pct", Math.round(wrNs * 100.0 / Math.max(1, System.nanoTime() - winT0)),
-                                "write_max_ms", wrMaxNs / 1_000_000, "gap_max_ms", gapMaxNs / 1_000_000);
+                                "write_max_ms", wrMaxNs / 1_000_000, "gap_max_ms", gapMaxNs / 1_000_000,
+                                "light_types", lightTagged ? java.util.Arrays.toString(lightCount) : null,
+                                "light_filtered", lightTagged ? (Object) lightFiltered : null,
+                                "light_wanted", lightTagged ? (Object) bridge.irLightRequest(lightSide) : null);
                         wrNs = wrMaxNs = gapMaxNs = 0;
                         winT0 = System.nanoTime();
                         statusText = "[" + stype + " " + prof.trim() + " " + Math.round(n / dt * 10) / 10.0 + "fps]";

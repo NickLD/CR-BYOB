@@ -19,8 +19,15 @@ import java.util.Map;
  * id = value), where the person submits it; nothing is sent from the app.
  *
  * Filled in: title, scanner, firmware, app/phone/Android line, the network the bridge ran on, and this session's
- * measurements (fps and delivery per stream, bitrate, frame-rate setting, USB speed, link). Never filled in,
- * because the issue is public: the scanner serial, Wi-Fi network names, IP addresses and the raw log.
+ * measurements (fps and delivery per stream, bitrate, frame-rate setting, USB speed, link). With "Include the
+ * log" (on by default) the Log field gets the log (LogExport): in full in the GitHub app; in a browser, a digest,
+ * with the whole log saved to Downloads as a zip to attach (LogFiles). Never included, because the issue is
+ * public: the scanner serial, Wi-Fi network names, passwords, MAC and IP addresses.
+ *
+ * The link carries only what the chosen app reads: the GitHub app takes title and body and ignores the form's
+ * fields; the web form fills its fields by id and doesn't need the body. The GitHub app takes long links but
+ * can't attach files, so it gets the readable log in the body. GitHub's website refuses links much over 6,000
+ * characters (MAX_URL), so the web form gets a digest in whatever room the report leaves, plus the zip.
  */
 final class DeviceReport {
     private DeviceReport() {}
@@ -41,7 +48,16 @@ final class DeviceReport {
         long streamMs, sessionStartMs, sessionStopMs;
         /** This session hasn't streamed: the measurements are those of the run that crashed or was killed. */
         boolean fromStoppedRun;
+        /** "Include the log": a digest in the Log field and the whole log saved to Downloads to attach. */
+        boolean includeLog = true;
     }
+
+    /** The GitHub app's package: it gets title and body, everything else gets the form's fields. */
+    static final String GITHUB_APP = "com.github.android";
+    /** Longest web-form link. GitHub answered a 6,000-character /issues/new link and failed at 6,500 (Nov 2026). */
+    static final int MAX_URL = 5800;
+    /** Longest GitHub-app body: GitHub caps an issue body at 65,536 characters. */
+    static final int MAX_BODY = 60_000;
 
     /** The template's Network and Result options (DeviceReportTest checks them against the form). */
     static final String[] NETWORKS = {"Wi-Fi Direct", "Wi-Fi", "Ethernet",
@@ -60,22 +76,29 @@ final class DeviceReport {
         }
     }
 
-    /** The pre-filled "new issue" URL. Empty fields are left out so the form shows its own placeholder. */
-    static String url(String repoUrl, Fields f) {
+    /**
+     * The pre-filled "new issue" URL for the GitHub app (title and body: it ignores the form's fields) or for the
+     * web form (its fields by id). `logs` goes in the Log field. Empty fields are left out so the form shows its
+     * own placeholder.
+     */
+    static String url(String repoUrl, Fields f, boolean githubApp, String logs) {
         Map<String, String> q = new LinkedHashMap<>();
         q.put("template", TEMPLATE);
         q.put("title", f.title);
-        q.put("scanner", f.scanner);
-        q.put("scanner_fw", f.scannerFw);
-        q.put("app_info", f.appInfo);
-        q.put("network", f.network);
-        q.put("client", f.client);
-        q.put("result", f.result);
-        q.put("details", f.details);
+        if (githubApp) {
+            // the same report as text, laid out the way GitHub writes a submitted form
+            q.put("body", body(f, logs));
+        } else {
+            q.put("scanner", f.scanner);
+            q.put("scanner_fw", f.scannerFw);
+            q.put("app_info", f.appInfo);
+            q.put("network", f.network);
+            q.put("client", f.client);
+            q.put("result", f.result);
+            q.put("details", f.details);
+            q.put("logs", logs);
+        }
         q.put("labels", "device report");
-        // The GitHub app ignores the form's fields and only takes title/body: the same report as text, laid out
-        // the way GitHub writes a submitted form. The web form fills its fields from the ids above instead.
-        q.put("body", body(f));
         StringBuilder sb = new StringBuilder(repoUrl).append("/issues/new");
         char sep = '?';
         for (Map.Entry<String, String> e : q.entrySet()) {
@@ -86,12 +109,55 @@ final class DeviceReport {
         return sb.toString();
     }
 
+    /**
+     * The report with the log for the app the person picked (logFor). `fullLog` says where the whole log is, for
+     * the web form's digest.
+     */
+    static String reportUrl(String repoUrl, Fields f, boolean githubApp, String fullLog,
+                            List<String> pinned, List<String> recent) {
+        return url(repoUrl, f, githubApp, logFor(repoUrl, f, githubApp, fullLog, pinned, recent));
+    }
+
+    /**
+     * The Log field for this app ("" when the log isn't included or nothing fits). The GitHub app takes long
+     * links (78 KB tested, Nov 2026) but can't attach files, so it gets the readable log, setup plus as many recent
+     * lines as GitHub's body limit allows. The web form's link stops near 6,000 characters, so it gets the digest,
+     * and the whole log goes in the zip to attach.
+     */
+    static String logFor(String repoUrl, Fields f, boolean githubApp, String fullLog,
+                         List<String> pinned, List<String> recent) {
+        if (!f.includeLog) return "";
+        if (githubApp) {
+            int room = MAX_BODY - body(f, "").length() - 20;
+            return room < 200 ? "" : LogExport.readable(pinned, recent, "CR-BYOB log (serial numbers, Wi-Fi names, "
+                    + "passwords, MAC and IP addresses removed). Older lines: Export log under Events in CR-BYOB.",
+                    room, new LinkedHashMap<>());
+        }
+        String bare = url(repoUrl, f, false, "");
+        int room = MAX_URL - bare.length() - "&logs=".length();
+        for (int tries = 0; tries < 5 && room > 0; tries++) {
+            String d = LogExport.digest(pinned, recent, fullLog, room);
+            if (d.isEmpty()) break;
+            int over = url(repoUrl, f, false, d).length() - MAX_URL;
+            if (over <= 0) return d;
+            room -= over + 16;
+        }
+        return "";
+    }
+
+    /** The digest's pointer to the whole log: the saved archive, or Export log when it couldn't be saved. */
+    static String fullLogNote(String savedName, String where) {
+        return savedName != null ? savedName + " in " + where + ", attach it here"
+                : "not attached (Export log under Events in CR-BYOB saves it)";
+    }
+
     /** The report as GitHub renders a submitted issue form: "### Label", a blank line, the value ("_No response_"). */
-    static String body(Fields f) {
+    static String body(Fields f, String logs) {
+        String log = logs == null || logs.isEmpty() ? "" : "```text\n" + logs + "\n```";
         String[][] rows = {
                 {"Scanner", f.scanner}, {"Scanner firmware", f.scannerFw}, {"App, phone and Android version", f.appInfo},
                 {"Network", f.network}, {"Creality Scan version", f.client}, {"Result", f.result},
-                {"What happened", f.details}, {"Log", ""}};
+                {"What happened", f.details}, {"Log", log}};
         StringBuilder sb = new StringBuilder();
         for (String[] r : rows) {
             if (sb.length() > 0) sb.append("\n\n");
@@ -332,6 +398,7 @@ final class DeviceReport {
         if (d == null) return;
         if (!d.client.isEmpty()) f.client = d.client;
         if (!d.result.isEmpty()) f.result = d.result;
+        f.includeLog = d.includeLog;
         if (!f.scannerDetected && !d.scanner.isEmpty()) f.scanner = d.scanner;
         String notes = notesOf(d.details);
         if (!notes.isEmpty()) f.details = f.details.trim() + "\n" + notes + "\n";
@@ -501,6 +568,8 @@ final class DeviceReport {
         private final android.widget.LinearLayout body;
         private android.widget.EditText title, client, details;
         private android.widget.TextView scanner, network, result, error;
+        private android.widget.CheckBox includeLog;
+        private LogFiles.Saved saved;                // the log archive saved for this report, null = none
         private android.widget.ScrollView scroll;
         private boolean tried;                       // Continue was tapped once: missing fields show in red
         private android.app.AlertDialog dialog;
@@ -658,9 +727,36 @@ final class DeviceReport {
             src.setText(statsSource(f, android.text.format.DateFormat.getTimeFormat(a)));
             src.setVisibility(android.view.View.VISIBLE);
             details = field(f.details, "", true);
+            includeLog = new android.widget.CheckBox(a);
+            includeLog.setText("Include the log");
+            includeLog.setTextColor(Widgets.TEXT);
+            includeLog.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15);
+            includeLog.setButtonTintList(android.content.res.ColorStateList.valueOf(Widgets.BLUE));
+            includeLog.setChecked(f.includeLog);
+            android.widget.LinearLayout.LayoutParams clp = new android.widget.LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+            clp.topMargin = dp(10);
+            body.addView(includeLog, clp);
+            android.widget.TextView logNote = text(13, Widgets.SUB);
+            logNote.setText("The log goes in the report's Log field. In a browser that's a digest, and the whole log "
+                    + "is saved to Downloads as a zip for you to attach. It helps most when something doesn't work.");
+            body.addView(logNote);
+            android.widget.TextView preview = text(13, Widgets.BLUE);
+            preview.setText("See the digest \u203A");
+            preview.setPadding(0, dp(6), 0, dp(2));
+            preview.setOnClickListener(v -> showDigest());
+            body.addView(preview);
+            includeLog.setOnCheckedChangeListener((v, on) -> {
+                logNote.setAlpha(on ? 1f : 0.5f);
+                preview.setVisibility(on ? android.view.View.VISIBLE : android.view.View.GONE);
+            });
+            if (!f.includeLog) {
+                logNote.setAlpha(0.5f);
+                preview.setVisibility(android.view.View.GONE);
+            }
             android.widget.TextView privacy = text(13, Widgets.SUB);
-            privacy.setText("Never included: the scanner's serial number, Wi-Fi network names, IP addresses and the "
-                    + "log. The report is public on GitHub.");
+            privacy.setText("Never included: the scanner's serial number, Wi-Fi network names, passwords, and MAC and IP "
+                    + "addresses. The report is public on GitHub.");
             privacy.setPadding(0, dp(12), 0, 0);
             body.addView(privacy);
             error = text(14, Widgets.RED);
@@ -703,7 +799,7 @@ final class DeviceReport {
                     })
                     .setNegativeButton("Send anyway", (x, w) -> {
                         if (dialog != null) dialog.dismiss();
-                        openWith(url(BuildConfig.REPO_URL, f));
+                        proceed();
                     })
                     .create();
             Widgets.showStyled(c);
@@ -714,10 +810,11 @@ final class DeviceReport {
          * Android's own chooser can't do this: it goes straight to the GitHub app, which is the verified handler
          * for github.com links. With a single app it opens that one directly.
          */
-        private void openWith(String url) {
+        private void openWith() {
             android.content.pm.PackageManager pm = a.getPackageManager();
             android.content.Intent view = new android.content.Intent(android.content.Intent.ACTION_VIEW,
-                    android.net.Uri.parse(url)).addCategory(android.content.Intent.CATEGORY_BROWSABLE);
+                    android.net.Uri.parse(BuildConfig.REPO_URL + "/issues/new"))
+                    .addCategory(android.content.Intent.CATEGORY_BROWSABLE);
             java.util.List<android.content.pm.ResolveInfo> found = new java.util.ArrayList<>();
             java.util.Set<String> seen = new java.util.HashSet<>();
             for (android.content.Intent probe : new android.content.Intent[]{view, new android.content.Intent(
@@ -746,13 +843,85 @@ final class DeviceReport {
             Widgets.showStyled(d);
         }
 
+        /**
+         * The person picked `pkg`. For a browser with Include the log, saves the zip to Downloads first (off the
+         * UI thread: it redacts the whole log). The GitHub app can't attach files and gets the log in the body.
+         */
         private void launch(android.content.Intent view, String pkg) {
-            BLog.log("device_report_opened", "app", pkg, "scanner", f.scanner, "result", f.result);
+            saved = null;
+            if (GITHUB_APP.equals(pkg) || !f.includeLog) {
+                open(view, pkg);
+                return;
+            }
+            android.widget.Toast.makeText(a, "Saving the log to Downloads\u2026", android.widget.Toast.LENGTH_SHORT).show();
+            new Thread(() -> {
+                LogFiles.Saved s = null;
+                try {
+                    s = LogFiles.saveToDownloads(a);
+                } catch (Exception e) {
+                    BLog.log("log_export_error", "err", String.valueOf(e));
+                }
+                LogFiles.Saved done = s;
+                a.runOnUiThread(() -> {
+                    if (a.isFinishing() || a.isDestroyed()) return;
+                    saved = done;
+                    if (done == null)
+                        android.widget.Toast.makeText(a, "Couldn't save the log file. The report still has a digest.",
+                                android.widget.Toast.LENGTH_LONG).show();
+                    open(view, pkg);
+                });
+            }, "report-log").start();
+        }
+
+        /** Opens the report in `pkg`, with the link made for that app (the GitHub app or the web form). */
+        private void open(android.content.Intent view, String pkg) {
+            LogFiles.Lines l = LogFiles.lines(a);
+            String url = reportUrl(BuildConfig.REPO_URL, f, GITHUB_APP.equals(pkg), fullLog(), l.pinned, l.recent);
+            BLog.log("device_report_opened", "app", pkg, "scanner", f.scanner, "result", f.result,
+                    "url_chars", url.length(), "log_file", saved != null);
             try {
-                a.startActivity(new android.content.Intent(view).setPackage(pkg));
+                a.startActivity(new android.content.Intent(view).setData(android.net.Uri.parse(url)).setPackage(pkg));
+                if (saved != null)
+                    android.widget.Toast.makeText(a, "Attach " + saved.name + " from " + saved.where + " in the Log field",
+                            android.widget.Toast.LENGTH_LONG).show();
             } catch (android.content.ActivityNotFoundException e) {
                 android.widget.Toast.makeText(a, "Couldn't open " + pkg, android.widget.Toast.LENGTH_LONG).show();
             }
+        }
+
+        private String fullLog() {
+            return saved != null ? fullLogNote(saved.name, saved.where) : fullLogNote(null, null);
+        }
+
+        /** Continue: asks which app opens the report (launch saves the log file when it's a browser). */
+        private void proceed() {
+            openWith();
+        }
+
+        /** "See the digest": what a browser's Log field will get, with a placeholder file name. */
+        private void showDigest() {
+            check();
+            boolean was = f.includeLog;
+            f.includeLog = true;
+            LogFiles.Lines l = LogFiles.lines(a);
+            String d = logFor(BuildConfig.REPO_URL, f, false,
+                    fullLogNote(LogExport.fileName(System.currentTimeMillis()), "Downloads"), l.pinned, l.recent);
+            f.includeLog = was;
+            android.widget.TextView t = text(11, Widgets.TEXT);
+            t.setTypeface(android.graphics.Typeface.MONOSPACE);
+            t.setText(d.isEmpty() ? "Nothing to show yet: the log is empty, or the report leaves no room."
+                    : "In a browser the Log field gets this digest. In the GitHub app it gets as much of the recent "
+                    + "log instead, as much as GitHub allows (around 500 lines).\n\n" + d);
+            t.setTextIsSelectable(true);
+            t.setPadding(dp(20), dp(8), dp(20), dp(8));
+            android.widget.ScrollView sv = new android.widget.ScrollView(a);
+            sv.addView(t);
+            android.app.AlertDialog dd = new android.app.AlertDialog.Builder(a)
+                    .setTitle("Log digest")
+                    .setView(sv)
+                    .setPositiveButton("OK", null)
+                    .create();
+            Widgets.showStyled(dd);
         }
 
         /** Copies the dialog into the fields; false (and says what's missing) while a required one is empty. */
@@ -767,7 +936,7 @@ final class DeviceReport {
                 confirmNoStats();
                 return false;
             }
-            openWith(url(BuildConfig.REPO_URL, f));
+            proceed();
             return true;
         }
 
@@ -783,6 +952,7 @@ final class DeviceReport {
             f.client = client.getText().toString().trim();
             f.result = (String) result.getTag();
             f.details = details.getText().toString().trim();
+            if (includeLog != null) f.includeLog = includeLog.isChecked();
             java.util.List<String> missing = new java.util.ArrayList<>();
             android.view.View first = null;
             Object[][] req = {{"Title", title, f.title}, {"Scanner", scanner, f.scanner}, {"Network", network, f.network},

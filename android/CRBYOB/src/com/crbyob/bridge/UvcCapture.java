@@ -21,7 +21,37 @@ public final class UvcCapture implements Otter.Sink, FrameSource {
         public int len;
         public long tsUs;
         boolean err;
+        /**
+         * The frame's tag byte: the first byte of the SCR field of its first UVC payload header, -1 without SCR.
+         * Orbbec scanners put per-frame data there instead of a clock (Otter IR: 0xA2 / 0xFF, color 0x3C), and the
+         * Raptor marks each IR frame's light type with it [I] (ScannerModel.irLightTypes).
+         */
+        public int meta = -1;
+        final byte[] firstHdr = new byte[HDR_KEEP], lastHdr = new byte[HDR_KEEP];
+        int firstHdrLen, lastHdrLen;
         Frame(int cap) { data = new byte[cap]; }
+    }
+
+    /** Payload header bytes kept per frame, for the light type and the uvc_hdr log lines. */
+    static final int HDR_KEEP = 64;
+
+    /** Offset of the vendor bytes in a UVC payload header: after length, info, PTS (4) and SCR (6) when present. */
+    static int vendorOffset(int info) {
+        return 2 + ((info & 0x04) != 0 ? 4 : 0) + ((info & 0x08) != 0 ? 6 : 0);
+    }
+
+    /** First vendor byte of a payload header (h[0] = length, h[1] = info), or -1 if it has none. */
+    static int vendorByte(byte[] h, int n) {
+        if (n < 2) return -1;
+        int hl = Math.min(h[0] & 0xFF, n), vo = vendorOffset(h[1] & 0xFF);
+        return hl > vo ? h[vo] & 0xFF : -1;
+    }
+
+    /** First byte of a payload header's SCR field (after PTS when present), or -1 if it has no SCR. */
+    static int tagByte(byte[] h, int n) {
+        if (n < 2) return -1;
+        int info = h[1] & 0xFF, hl = Math.min(h[0] & 0xFF, n), at = 2 + ((info & 0x04) != 0 ? 4 : 0);
+        return (info & 0x08) != 0 && hl > at ? h[at] & 0xFF : -1;
     }
 
     private final int maxQueued;                 // finished frames waiting for the sender; pool = this + assembling + consumer
@@ -169,7 +199,7 @@ public final class UvcCapture implements Otter.Sink, FrameSource {
             BLog.log("uvc_stats", "stream", tag, "frames", frames, "fps", Math.round(frames / dt * 10) / 10.0,
                     "mbps", Math.round(bytes * 8 / dt / 1e5) / 10.0, "urbs", urbs, "drop_err", dropErr,
                     "drop_size", dropSize, "drop_queue", dropQueue, "drop_sync", dropSync, "bad_hdr", badHdr,
-                    "queue_fail", queueFail);
+                    "queue_fail", queueFail, "tag", histogram(tagCounts), "vendor", histogram(vendorCounts));
         }
     }
 
@@ -187,6 +217,19 @@ public final class UvcCapture implements Otter.Sink, FrameSource {
                 hdrState = 1;
                 savedInfo = info;
                 off = hl;
+                if (cur != null) {                  // keep the frame's first and latest payload headers
+                    int k = Math.min(hl, HDR_KEEP);
+                    b.limit(n);
+                    b.position(0);
+                    if (cur.len == 0 && cur.firstHdrLen == 0) {
+                        b.get(cur.firstHdr, 0, k);
+                        cur.firstHdrLen = k;
+                        cur.meta = tagByte(cur.firstHdr, k);
+                        b.position(0);
+                    }
+                    b.get(cur.lastHdr, 0, k);
+                    cur.lastHdrLen = k;
+                }
             } else {
                 hdrState = 2;
             }
@@ -248,6 +291,8 @@ public final class UvcCapture implements Otter.Sink, FrameSource {
         if (f == null) f = new Frame(frameCap);
         f.len = 0;
         f.err = false;
+        f.meta = -1;
+        f.firstHdrLen = f.lastHdrLen = 0;
         f.tsUs = System.nanoTime() / 1000;
         return f;
     }
@@ -266,6 +311,7 @@ public final class UvcCapture implements Otter.Sink, FrameSource {
             return;
         }
         frames++;
+        noteHeaders(f);
         synchronized (q) {
             while (filled.size() >= maxQueued) {
                 free.addLast(filled.pollFirst());
@@ -274,6 +320,38 @@ public final class UvcCapture implements Otter.Sink, FrameSource {
             filled.addLast(f);
             q.notifyAll();
         }
+    }
+
+    // per uvc_stats window: tag bytes (SCR byte 0) and bytes after the SCR, of each frame's first payload header
+    // (index 256 = none)
+    private final int[] tagCounts = new int[257], vendorCounts = new int[257];
+    private int hdrLogged;
+
+    /**
+     * Logs the payload headers of the first frames (uvc_hdr) and counts their tag and vendor bytes for uvc_stats,
+     * so a log shows where a scanner puts per-frame data such as the Raptor's light type.
+     */
+    private void noteHeaders(Frame f) {
+        int tag = f.meta, vend = vendorByte(f.firstHdr, f.firstHdrLen);
+        tagCounts[tag < 0 ? 256 : tag]++;
+        vendorCounts[vend < 0 ? 256 : vend]++;
+        if (hdrLogged < 6) {
+            hdrLogged++;
+            BLog.log("uvc_hdr", "stream", tag, "frame", frames, "len", f.len, "first", Hp.hex(f.firstHdr, f.firstHdrLen),
+                    "last", Hp.hex(f.lastHdr, f.lastHdrLen), "tag", tag, "vendor", vend);
+        }
+    }
+
+    /** "a2:15 b1:15" for a counts array (index 256 = "none"), then cleared. */
+    static String histogram(int[] c) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < c.length; i++) {
+            if (c[i] == 0) continue;
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(i == 256 ? "none" : String.format(java.util.Locale.US, "%02x", i)).append(':').append(c[i]);
+            c[i] = 0;
+        }
+        return sb.toString();
     }
 
     private void recycle(Frame f) {

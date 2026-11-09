@@ -413,6 +413,7 @@ public final class Bridge {
         List<Role> r = m.resolveRoles(names, vsCount, how);
         o.model = m;
         synchronized (rleParams) { System.arraycopy(m.rleParams, 0, rleParams, 0, 5); }
+        synchronized (lightRequest) { Arrays.fill(lightRequest, LIGHT_ALL); }
         model = m;
         roles = r;
         roleSource = how;
@@ -648,6 +649,62 @@ public final class Bridge {
         m.put(0xFC1, profileListBlob());
         m.put(0xFCB, portListBlob());
         return m;
+    }
+
+    // ------------------------------------------------------------------ Raptor IR frame light type
+    /**
+     * Props 0xC5/0xC6, "line scan left/right" in cameraServer: which IR frames (by light type, laser lines vs
+     * infrared) the PC wants from IR_LEFT/IR_RIGHT; 0xFFFF = all. cameraServer answers them through
+     * ob::Device::setPioneerIRFrameLightType, which only filters frames on the bridge in the scanner's normal work
+     * modes and writes the prop to the scanner in its line-laser ones [O SDK]. Creality Scan sets 0xFFFF at preview
+     * start and stops the preview if this fails; the scanner itself refuses it there (issue #15).
+     */
+    static final int PROP_LINE_SCAN_LEFT = 0xC5, PROP_LINE_SCAN_RIGHT = 0xC6, LIGHT_ALL = 0xFFFF;
+    private final int[] lightRequest = {LIGHT_ALL, LIGHT_ALL};
+
+    /** The light type the PC wants on side 0 (left, 0xC5) or 1 (right, 0xC6). */
+    int irLightRequest(int side) {
+        synchronized (lightRequest) {
+            return lightRequest[side];
+        }
+    }
+
+    /** 0xFFFF and -1 mean every light type (PioneerIRFrameRawDataCallback: (v + 1) & ~0x10000 == 0). */
+    static boolean allLightTypes(int v) {
+        return ((v + 1) & 0xFFFEFFFF) == 0;
+    }
+
+    /** A get or set of 0xC5/0xC6 on a scanner whose IR frames carry a light type (the Raptor). */
+    boolean isLineScan(int op, long prop) {
+        return (prop == PROP_LINE_SCAN_LEFT || prop == PROP_LINE_SCAN_RIGHT) && !model.irLightTypes.isEmpty()
+                && (op == Hp.OP_GET_PROPERTY || op == Hp.OP_SET_PROPERTY);
+    }
+
+    /**
+     * Answers 0xC5/0xC6 as cameraServer does: a set is kept (it filters the IR frames sent) and also passed to
+     * the scanner, which takes it only in its line-laser work modes; the PC always gets success.
+     */
+    byte[] lineScan(int op, int reqId, long prop, byte[] payload, byte[] frame) {
+        int side = prop == PROP_LINE_SCAN_RIGHT ? 1 : 0;
+        String sideName = side == 0 ? "left" : "right";
+        if (op == Hp.OP_SET_PROPERTY && payload.length >= 8) {
+            int v = Hp.u32(payload, 4);
+            synchronized (lightRequest) {
+                lightRequest[side] = v;
+            }
+            String scanner;
+            try {
+                byte[] r = forward(frame, op);
+                scanner = r == null ? "no reply" : "status " + Hp.statusOf(r);
+            } catch (Exception e) {
+                scanner = String.valueOf(e);
+            }
+            BLog.log("line_scan_set", "side", sideName, "value", v, "all", allLightTypes(v), "scanner", scanner);
+            return Hp.reply(op, reqId);
+        }
+        int v = irLightRequest(side);
+        BLog.log("line_scan_get", "side", sideName, "value", v);
+        return Hp.reply(op, reqId, Hp.fiveInts(v, LIGHT_ALL, 0, LIGHT_ALL, 1), 0);
     }
 
     // ------------------------------------------------------------------ bridge-owned props
