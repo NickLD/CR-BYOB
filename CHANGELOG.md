@@ -10,6 +10,14 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+### Fixed
+- CR-Scan Raptor: the bridge now offers the Raptor's depth stream, which Creality Scan's Infrared mode
+  appears to need. Before, the Infrared preview failed right after starting. Blue-line preview already works
+  since 0.2.5. Thanks to @ravngr for the logs.
+- Fewer dropped frames at high USB rates. The bridge keeps more data queued from the scanner, so a
+  momentary delay on the phone no longer ruins a whole frame. On a Raptor at 50 fps, almost half the
+  frames were lost this way, which showed as flicker.
+
 ## [0.2.5] - 2026-11-09
 
 ### Added

@@ -77,9 +77,10 @@ Example `files/scanners.json` for an Otter variant that looks like the Otter:
 - **RLE** (BlockStdDevCompression V3) is implemented in `RleCodec.java` (~1.4 ms per 1280×800 frame on a
   desktop JVM), but nobody has decoded it with a real client yet. It's offered for models with `"RLE"` in
   `ir_synth` that pass `ir_synth_min_fw`.
-- **Depth streams**: the Otter's "Depth Camera" interface carries the right IR image. Models that stream real
-  depth (Raptor: Y14 480×300@30 per the SDK config) need `advertise.depth` set to what the device actually
-  outputs. The capture path has only been tested with GREY and MJPG.
+- **Depth streams**: the Otter's "Depth Camera" interface carries the right IR image. The Raptor family
+  advertises its native Y14 depth (480×300@30 is the SDK config's default), which Creality Scan's Infrared
+  (speckle) mode appears to need. Y14 frames pass through unchanged, with no size check. The capture path
+  has only been tested with GREY and MJPG.
 - Two streams on one VC (`[vc, n]`) assume the n-th VideoStreaming interface carries the n-th stream. That is
   inferred, not seen. If a Sermoon/Pika instead has one VS carrying both eyes, this needs new code.
 - Synthesized MJPG IR isn't offered: the app has no IR JPEG encoder in the default path.

@@ -65,6 +65,18 @@ public final class UvcCapture implements Otter.Sink, FrameSource {
         return Math.max(2, (fps + 3) / 4);
     }
     private static final int URB_BUDGET = 4 << 20; // usbfs_memory_mb is 16 MB on stock kernels; 3 streams share it
+    /**
+     * Bytes kept queued per stream. A scanner's FIFO overflows when no request is waiting, and the lost chunk
+     * breaks the whole frame. 16 x 12 KB (the Raptor's payload size) is under 2 ms at 1920x1200@50: on a
+     * Pixel 8 Pro that arrived at 94% of the bytes but only 55% of the frames (issue #15). 1 MB is about 9 ms.
+     */
+    static final int IN_FLIGHT = 1 << 20;
+
+    /** Requests to keep queued for transfers of xferSize: IN_FLIGHT worth, at least 16, within URB_BUDGET. */
+    static int urbCount(int xferSize) {
+        int n = Math.max(16, (IN_FLIGHT + xferSize - 1) / xferSize);
+        return Math.max(2, Math.min(n, URB_BUDGET / xferSize));
+    }
 
     private final Otter o;
     private final UsbDesc.Vs vs;
@@ -111,7 +123,7 @@ public final class UvcCapture implements Otter.Sink, FrameSource {
         if (maxPayload <= 0) maxPayload = 512 * 1024;
         xferSize = ((maxPayload + mps - 1) / mps) * mps;
         if (xferSize > (2 << 20)) xferSize = 64 * 1024;   // huge payloads: spanning logic below handles it
-        int n = Math.max(2, Math.min(16, URB_BUDGET / xferSize));
+        int n = urbCount(xferSize);
 
         if (expected > 0) frameCap = expected + 64 * 1024;   // a bit of slack so oversize frames are detectable
         else frameCap = Math.max(Math.max(p.maxFrameBuf, maxFrameSize), p.width * p.height * 2);
