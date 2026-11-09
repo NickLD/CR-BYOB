@@ -356,7 +356,7 @@ public final class MainActivity extends Activity {
                 + "Stops the phone sleeping and auto-locking while CR-BYOB is on screen. The power button still locks it.");
         awakeSwitch.setTextColor(SUB);
         awakeSwitch.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        awakeSwitch.setChecked(getSharedPreferences("bridge", MODE_PRIVATE).getBoolean(PREF_KEEP_AWAKE, false));
+        awakeSwitch.setChecked(keepAwakePref());
         awakeSwitch.setOnCheckedChangeListener((v, on) -> {
             getSharedPreferences("bridge", MODE_PRIVATE).edit().putBoolean(PREF_KEEP_AWAKE, on).apply();
             applyKeepAwake(BridgeService.current() != null);
@@ -377,13 +377,18 @@ public final class MainActivity extends Activity {
     private android.widget.Switch awakeSwitch;
     private boolean keptAwake;
 
+    /** The keep-screen-on toggle; on unless the user has turned it off. */
+    private boolean keepAwakePref() {
+        return getSharedPreferences("bridge", MODE_PRIVATE).getBoolean(PREF_KEEP_AWAKE, true);
+    }
+
     /**
      * "Keep screen on while the bridge is running": FLAG_KEEP_SCREEN_ON on this window while the toggle is on and the
      * bridge runs. Android honours it only while this activity is visible, so leaving the app restores normal
      * sleep and auto-lock, and the power button still locks the phone.
      */
     private void applyKeepAwake(boolean running) {
-        boolean on = running && getSharedPreferences("bridge", MODE_PRIVATE).getBoolean(PREF_KEEP_AWAKE, false);
+        boolean on = running && keepAwakePref();
         if (on == keptAwake) return;
         keptAwake = on;
         if (on) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
