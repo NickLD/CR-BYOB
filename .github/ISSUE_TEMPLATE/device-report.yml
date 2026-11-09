@@ -23,10 +23,6 @@ body:
         - CR-Scan Ferret Pro
         - Sermoon X1
         - Sermoon S1
-        - Sermoon P1
-        - Sermoon P1 Lite
-        - Creality Pika
-        - M1 Ultra
         - Other (say which below)
     validations:
       required: true
