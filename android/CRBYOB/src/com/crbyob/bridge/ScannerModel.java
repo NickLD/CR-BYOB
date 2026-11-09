@@ -49,6 +49,11 @@ final class ScannerModel {
     final int[] rleParams = {100, 60, 6, 15, 15};
     final int rlePadTo;
     final List<int[]> irPreStreamProps = new ArrayList<>();
+    /**
+     * IR frame light type by the vendor byte of the frame's UVC payload header (the Raptor's laser lines vs
+     * infrared), sent to the PC with each IR frame. Empty: the scanner doesn't tag its frames.
+     */
+    final Map<Integer, Integer> irLightTypes = new LinkedHashMap<>();
     final int irJpegQuality;
     final int bridgeFps;      // Creality Scan's own IR fps behind a bridge ("Stock"), 0 = unknown (learned at runtime)
     final boolean imuPresent;
@@ -213,6 +218,11 @@ final class ScannerModel {
         if (rp != null) for (int i = 0; i < Math.min(5, rp.length()); i++) rleParams[i] = rp.getInt(i);
         this.rlePadTo = rle != null ? rle.optInt("pad_to", 1500) : 1500;
         pairs(m.optJSONArray("ir_pre_stream_props"), irPreStreamProps);
+        JSONObject lt = m.optJSONObject("ir_light_types");
+        if (lt != null) for (Iterator<String> it = lt.keys(); it.hasNext(); ) {
+            String k = it.next();
+            irLightTypes.put(Integer.decode(k.trim()) & 0xFF, lt.getInt(k));
+        }
         this.irJpegQuality = m.optInt("ir_jpeg_quality", 98);
         this.bridgeFps = m.optInt("bridge_fps", 0);
         JSONObject imu = m.optJSONObject("imu");

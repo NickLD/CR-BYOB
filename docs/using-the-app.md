@@ -116,7 +116,8 @@ From top to bottom:
 - **Network**: the choice above, plus the Wi-Fi line (network, Wi-Fi generation, band and channel, signal,
   and upload/download link rates) and speed warnings.
 - **Experimental**: the scanner frame-rate override (above).
-- **Events**: recent events in plain words, with the raw log below.
+- **Events**: recent events in plain words, with the raw log below. *Export log* saves the whole log as a
+  zip to attach to an issue, with serial numbers, Wi-Fi names, passwords and addresses removed.
 - **Version** at the bottom: tap *What's new* (*What's new / Check for app updates* in GitHub builds); long-press to
   copy your app version, phone and Android version for a bug report. GitHub builds also have a Ko-fi button
   under it.
@@ -308,5 +309,8 @@ not: that's how scanners move from untested to supported.
 **Still stuck?** Open an [issue](https://github.com/NickLD/CR-BYOB/issues): long-press the version at the
 bottom of the dashboard to copy your app and phone details for it. For whether a scanner or phone works, send a
 [Device report](https://github.com/NickLD/CR-BYOB/issues/new?template=device-report.yml) instead: from the app
-it opens with your scanner, phone and the session's frame rates filled in. Logs are in the dashboard under
-`RAW LOG`; passwords never appear in them.
+it opens with your scanner, phone and the session's frame rates filled in. With *Include the log* on, it also
+fills in the log: the recent log in the GitHub app; in a browser, a digest, with the whole log saved to
+Downloads for you to attach. *Export log* under
+`RAW LOG` makes the same file at any time. Serial numbers, Wi-Fi names, passwords and addresses are removed
+from both.

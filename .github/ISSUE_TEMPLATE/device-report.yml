@@ -82,5 +82,5 @@ body:
     attributes:
       label: Log
       description: |
-        Optional but very helpful for scanners that don't work: open *Events → Raw log* on the dashboard and copy the lines around the problem, or `adb shell logcat -s CRBYOB`. Lines named `scanner_model`, `scanner_roles` and `usb_vs_modes` matter most. Passwords never appear in the log.
+        Optional but very helpful for scanners that don't work. Sent from the app with *Include the log* on, this box already holds the log: the recent log from the GitHub app, or a digest from a browser, where the whole log is also saved to Downloads as `crbyob-log-….zip`: attach that file here (drag it in, or use the attach button under the box). *Export log* under *Events* on the dashboard makes the same file at any time. Serial numbers, Wi-Fi names, passwords, MAC and IP addresses are removed from both.
       render: text

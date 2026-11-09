@@ -12,8 +12,10 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /** JSONL-ish log: logcat (tag CRBYOB), files/bridge.jsonl and an in-memory ring for the UI. */
 public final class BLog {
@@ -21,6 +23,11 @@ public final class BLog {
     private static final long MAX_FILE = 8L << 20;
     private static final int RING = 300;
     private static final ArrayDeque<String> ring = new ArrayDeque<>();
+    /**
+     * Scanner setup lines, kept after they leave the ring because they matter most in a report: the newest line
+     * per kind (per interface for usb_vs_modes, see LogExport.PINNED_KINDS), in the order they were first logged.
+     */
+    private static final Map<String, String> pinned = new LinkedHashMap<>();
     private static File file;
     private static Writer writer;
     private static long written;
@@ -69,6 +76,8 @@ public final class BLog {
             String ui = HMS.format(new Date(now)) + " " + human;
             ring.addLast(ui);
             while (ring.size() > RING) ring.removeFirst();
+            if (LogExport.PINNED_KINDS.contains(kind))
+                pinned.put("usb_vs_modes".equals(kind) && kv.length > 1 ? kind + " " + kv[1] : kind, ui);
             if (writer != null) {
                 try {
                     writer.write(line);
@@ -104,6 +113,11 @@ public final class BLog {
     public static synchronized List<String> recent(int n) {
         List<String> out = new ArrayList<>(ring);
         return out.size() > n ? out.subList(out.size() - n, out.size()) : out;
+    }
+
+    /** The scanner setup lines (see LogExport.PINNED_KINDS), as shown in the raw log. */
+    public static synchronized List<String> pinned() {
+        return new ArrayList<>(pinned.values());
     }
 
     private static void appendJson(StringBuilder sb, Object v) {

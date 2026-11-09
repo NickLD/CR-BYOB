@@ -65,7 +65,7 @@ public class DeviceReportTest {
         ss.sent[0] = 21_330;
         ss.captured[0] = 21_500;
         DeviceReport.Fields f = DeviceReport.collect(otterOnWifi(), ss, "CR-BYOB 0.2.1 (1, github, abc) · Google Pixel 6 · Android 17 (API 37)", "Google Pixel 6");
-        Map<String, String> q = query(DeviceReport.url(REPO, f));
+        Map<String, String> q = query(DeviceReport.url(REPO, f, false, ""));
         assertEquals("device-report.yml", q.get("template"));
         assertEquals("[Device] CR-Scan Otter on Google Pixel 6", q.get("title"));
         assertEquals("CR-Scan Otter", q.get("scanner"));
@@ -75,12 +75,78 @@ public class DeviceReportTest {
         assertTrue(d, d.contains("IR L: 30.0 fps, 99% of captured frames sent"));
         assertTrue(d, d.contains("Frame-rate setting: Max"));
         assertTrue(d, d.contains("Wi-Fi 7, 5 GHz, -44 dBm, 1921 Mbit/s link rate"));
-        assertFalse("spaces must be %20, not +", DeviceReport.url(REPO, f).contains("+"));
+        assertFalse("spaces must be %20, not +", DeviceReport.url(REPO, f, false, "").contains("+"));
+        assertFalse("the web form doesn't read the body", q.containsKey("body"));
+
         // the GitHub app ignores form fields: the same report as body text, in GitHub's submitted-form layout
-        String body = q.get("body");
+        Map<String, String> app = query(DeviceReport.url(REPO, f, true, ""));
+        assertEquals("[Device] CR-Scan Otter on Google Pixel 6", app.get("title"));
+        assertFalse("the GitHub app doesn't read the fields", app.containsKey("details") || app.containsKey("scanner"));
+        String body = app.get("body");
         assertTrue(body, body.startsWith("### Scanner\n\nCR-Scan Otter\n\n### Scanner firmware\n\n1.2.2"));
         assertTrue(body, body.contains("### Result\n\n_No response_"));
         assertTrue(body, body.contains("### What happened\n\nMeasured by CR-BYOB"));
+        assertTrue(body, body.endsWith("### Log\n\n_No response_"));
+    }
+
+    /** A long log for the digest: scanner setup lines plus 300 lines of mixed traffic, with private values. */
+    static List<String> pinnedLines() {
+        StringBuilder modes = new StringBuilder();
+        for (String fmt : new String[]{"GREY", "MJPG", "Y10 "})
+            for (String res : new String[]{"320x200", "640x400", "800x600", "1280x800"})
+                for (int fps : new int[]{5, 10, 15, 20, 30}) modes.append(fmt.trim()).append(' ').append(res).append('@').append(fps).append(" (fmt 3 frm 1); ");
+        List<String> p = new ArrayList<>();
+        p.add("06:10:00 kind=usb_open dev=/dev/bus/usb/002/010 vid=2bc5 pid=06a8 serial=BCA674105K2 desc_bytes=2453 summary=2bc5:06a8 | VC0 uvc=110 vs=[1]");
+        for (int i : new int[]{1, 3, 5}) p.add("06:10:00 kind=usb_vs_modes iface=" + i + " ep=8" + i + " modes=" + modes);
+        p.add("06:10:01 kind=scanner_model pid=0x06A8 model_pid=0x06A8 name=CR-Scan Raptor status=unverified registry=asset:scanners.json notes=PioneerDevice uses the default port bytes = Otter layout [O client].");
+        p.add("06:10:01 kind=scanner_roles roles=[ir@VC2:8556, ir_l@VC2:8556, ir_r@VC0:8557, color@VC4:8888] source={ir=table} interfaces={0=Depth, 2=IR, 4=RGB} vs_per_vc={0=1, 2=1, 4=1}");
+        p.add("06:10:01 kind=scanner_ready pid=1704 fw=1.3.8 serial=BCA674105K2");
+        return p;
+    }
+
+    static List<String> recentLines() {
+        List<String> r = new ArrayList<>();
+        for (int i = 0; i < 300; i++) {
+            String t = String.format(java.util.Locale.US, "06:%02d:%02d ", 11 + i / 60, i % 60);
+            if (i % 3 == 0) r.add(t + "kind=hp_req peer=192.168.1.20:50112 opcode=17 req_id=" + i);
+            else if (i % 3 == 1) r.add(t + "kind=uvc_stats node=VC2 fps=0.0 frames=0 bytes=0");
+            else r.add(t + "kind=rtsp_req port=8556 method=DESCRIBE url=rtsp://192.168.1.7:8556/ir transport=null n=" + i);
+        }
+        return r;
+    }
+
+    /**
+     * With the log included: the web form's link carries a digest and still fits GitHub's limit; the GitHub app
+     * (long links, no attachments) gets the readable log in the body, within GitHub's body limit.
+     */
+    @Test
+    public void eachAppGetsTheLogItCanTake() throws Exception {
+        DeviceReport.Fields f = DeviceReport.collect(otterOnWifi(), troubledSession(), "CR-BYOB 0.2.4 (1, github, abc) · Google Pixel 8 Pro · Android 17 (API 37)", "Google Pixel 8 Pro");
+        f.result = DeviceReport.RESULTS[2];
+        f.details = f.details + "Black camera views in both modes, IMU works.";
+        String note = DeviceReport.fullLogNote("crbyob-log-20261109-0612.zip", "Downloads");
+
+        String web = DeviceReport.reportUrl(REPO, f, false, note, pinnedLines(), recentLines());
+        assertTrue(web.length() + "", web.length() <= DeviceReport.MAX_URL);
+        String digest = query(web).get("logs");
+        assertTrue(digest, digest.startsWith("Log digest. Full log: crbyob-log-20261109-0612.zip in Downloads, attach it here"));
+        assertTrue(digest, digest.contains("scanner_roles roles=[ir@VC2:8556"));
+        assertTrue(digest, digest.contains("rtsp_req port=8556 method=DESCRIBE"));
+        assertFalse(digest, digest.contains("192.168.") || digest.contains("BCA674105K2"));
+
+        String body = query(DeviceReport.reportUrl(REPO, f, true, note, pinnedLines(), recentLines())).get("body");
+        assertTrue(body.length() + "", body.length() <= DeviceReport.MAX_BODY);
+        String log = body.substring(body.indexOf("### Log"));
+        assertTrue(log, log.startsWith("### Log\n\n```text\nCR-BYOB log (serial numbers"));
+        assertTrue(log, log.contains("-- Scanner setup (latest) --"));
+        assertTrue("every line, noise included", log.contains("-- Last 300 lines --") && log.contains("hp_req"));
+        assertTrue(log, log.endsWith("n=299\n```"));
+        assertFalse(log, log.contains("192.168.") || log.contains("BCA674105K2"));
+
+        f.includeLog = false;
+        assertFalse(query(DeviceReport.reportUrl(REPO, f, false, note, pinnedLines(), recentLines())).containsKey("logs"));
+        assertTrue(query(DeviceReport.reportUrl(REPO, f, true, note, pinnedLines(), recentLines())).get("body")
+                .endsWith("### Log\n\n_No response_"));
     }
 
     /** A session with every diagnostic set: power, disconnects by phase, reduced rate, errors, latency, heat, chip. */
@@ -267,7 +333,7 @@ public class DeviceReportTest {
         DeviceReport.Fields f = DeviceReport.collect(new Dash.Snap(), null, "x", "Phone");
         assertEquals("", f.scanner);
         assertFalse(f.scannerDetected);
-        assertFalse(query(DeviceReport.url(REPO, f)).containsKey("scanner"));
+        assertFalse(query(DeviceReport.url(REPO, f, false, "")).containsKey("scanner"));
         assertTrue(f.title.contains("<scanner>"));
     }
 
@@ -310,7 +376,9 @@ public class DeviceReportTest {
         ss.sent[0] = 1800;
         ss.captured[0] = 1800;
         DeviceReport.Fields after = DeviceReport.collect(otterOnWifi(), ss, "x", "Phone");
+        before.includeLog = false;
         DeviceReport.restore(after, before);
+        assertFalse("their choice about the log carries over too", after.includeLog);
         assertEquals("Creality Scan 4.3.3 (Windows)", after.client);
         assertEquals(DeviceReport.RESULTS[0], after.result);
         assertTrue(after.details, after.details.contains("IR L: 30.0 fps"));                 // fresh measurements
@@ -341,7 +409,7 @@ public class DeviceReportTest {
     @Test
     public void matchesTheGitHubForm() throws Exception {
         String yml = read(".github/ISSUE_TEMPLATE/" + DeviceReport.TEMPLATE);
-        for (String id : new String[]{"scanner", "scanner_fw", "app_info", "network", "client", "result", "details"})
+        for (String id : new String[]{"scanner", "scanner_fw", "app_info", "network", "client", "result", "details", "logs"})
             assertTrue("field id " + id, yml.contains("id: " + id + "\n") || yml.contains("id: " + id + "\r\n"));
         List<String> scannerOpts = options(yml, "scanner"), networkOpts = options(yml, "network");
         assertTrue(scannerOpts.contains(DeviceReport.OTHER));

@@ -82,5 +82,11 @@
             android:name=".BridgeService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+        <!-- Export log: the zipped log for the share sheet (LogProvider, read-only, per-share grants) -->
+        <provider
+            android:name=".LogProvider"
+            android:authorities="${applicationId}.logs"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

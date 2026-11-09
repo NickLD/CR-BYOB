@@ -948,7 +948,16 @@ public final class MainActivity extends Activity {
             logView.setVisibility(logOpen ? View.VISIBLE : View.GONE);
             refresh();
         });
-        c.addView(logHeader);
+        // Export log: the whole log, zipped with private details removed (LogExport), to attach to an issue
+        TextView copyLog = text(13, BLUE, false);
+        copyLog.setText("Export log");
+        copyLog.setPadding(dp(12), dp(12), 0, 0);
+        copyLog.setOnClickListener(v -> LogFiles.share(this));
+        LinearLayout logRow = new LinearLayout(this);
+        logRow.setOrientation(LinearLayout.HORIZONTAL);
+        logRow.addView(logHeader, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        logRow.addView(copyLog);
+        c.addView(logRow);
         c.addView(logView);
     }
 
