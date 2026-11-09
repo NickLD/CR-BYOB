@@ -417,11 +417,17 @@ public class DeviceReportTest {
         assertEquals(java.util.Arrays.asList(DeviceReport.RESULTS), options(yml, "result"));
         for (String a : new String[]{"p2p", "wifi", "eth", "local"})
             assertTrue(a, networkOpts.contains(DeviceReport.networkOption(a)));
+        // the form lists exactly the scanners a bridge can serve, like the app's picker (order may differ)
         JSONObject models = new JSONObject(read("models/scanners.json")).getJSONObject("models");
+        assertEquals(new java.util.HashSet<>(DeviceReport.scannerOptions(models)), new java.util.HashSet<>(scannerOpts));
         for (Iterator<String> it = models.keys(); it.hasNext(); ) {
-            String name = models.getJSONObject(it.next()).optString("name");
-            assertTrue("scanners.json name not in the form's Scanner list: " + name, scannerOpts.contains(name));
+            String key = it.next();
+            String name = models.getJSONObject(key).optString("name");
+            if ("unsupported".equals(DeviceReport.status(models, key)))
+                assertFalse("unsupported scanner in the form: " + name, scannerOpts.contains(name));
         }
+        for (String gone : new String[]{"Sermoon P1", "Sermoon P1 Lite", "Creality Pika", "Elegoo M1 Ultra"})
+            assertFalse(gone, scannerOpts.contains(gone));
         assertTrue(DeviceReport.isFormLink(REPO + "/issues/new?template=device-report.yml"));
     }
 

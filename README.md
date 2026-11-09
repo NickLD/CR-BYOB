@@ -79,8 +79,8 @@ finds it over the network like the real thing.
 | CR-Scan Raptor, Raptor X, Raptor Pro, Raptor Pro Max | ❔ Untested |
 | CR-Scan Ferret Pro | ✅ Tested (fw 1.2.7, [device report](https://github.com/NickLD/CR-BYOB/issues/2) by [@Xalies](https://github.com/Xalies)) |
 | CR-Scan Ferret | ❔ Untested (same design as the Ferret Pro) |
-| Sermoon X1, Sermoon S1, Creality Pika, M1 Ultra | ❔ Untested |
-| Sermoon P1, Sermoon P1 Lite | ❌ Not supported (they don't work through a Scan Bridge) |
+| Sermoon X1, Sermoon S1 | ❔ Untested |
+| Sermoon P1, Sermoon P1 Lite, Creality Pika | ❌ Not supported (self-contained wireless scanners: they don't work through a Scan Bridge) |
 
 > [!TIP]
 > **Have an untested scanner?** Please try it and file a

@@ -10,6 +10,23 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-11-09
+
+### Changed
+- "Keep screen on while the bridge is running" is now on by default. If you turned it off before, it stays
+  off.
+- Self-contained wireless scanners (Sermoon P1, Sermoon P1 Lite, Creality Pika) are listed as not supported and
+  no longer offered in the device report's scanner list: they connect on their own and don't work through a
+  Scan Bridge. The Elegoo M1 Ultra, which Creality Scan's SDK happens to know, isn't listed any more either.
+
+### Fixed
+- CR-Scan Raptor: the bridge now offers the Raptor's depth stream, which Creality Scan's Infrared mode
+  appears to need. Before, the Infrared preview failed right after starting. Blue-line preview already works
+  since 0.2.5. Thanks to @ravngr for the logs.
+- Fewer dropped frames at high USB rates. The bridge keeps more data queued from the scanner, so a
+  momentary delay on the phone no longer ruins a whole frame. On a Raptor at 50 fps, almost half the
+  frames were lost this way, which showed as flicker.
+
 ## [0.2.5] - 2026-11-09
 
 ### Added

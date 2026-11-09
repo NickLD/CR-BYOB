@@ -543,19 +543,42 @@ final class DeviceReport {
         new Review(a, f).show();
     }
 
-    /** Scanner names for the picker: every model in scanners.json, in its order, then "Other". */
+    /** Scanner names for the picker: the models in scanners.json a bridge can serve, in its order, then "Other". */
     static java.util.List<String> scannerOptions(android.content.Context c) {
-        java.util.List<String> out = new java.util.ArrayList<>();
         try {
-            org.json.JSONObject models = ScannerModel.loadDocument(c, c.getFilesDir()).getJSONObject("models");
-            for (java.util.Iterator<String> it = models.keys(); it.hasNext(); ) {
-                String n = models.getJSONObject(it.next()).optString("name", "");
-                if (!n.isEmpty() && !out.contains(n)) out.add(n);
-            }
-        } catch (Exception ignored) {
+            return scannerOptions(ScannerModel.loadDocument(c, c.getFilesDir()).getJSONObject("models"));
+        } catch (Exception e) {
+            return new java.util.ArrayList<>(java.util.Collections.singletonList(OTHER));
+        }
+    }
+
+    /**
+     * Every model name in a scanners.json "models" object except the unsupported ones (self-contained wireless
+     * scanners such as the Sermoon P1 and Pika, which no Scan Bridge serves), then "Other". The form's Scanner
+     * list must match this (DeviceReportTest).
+     */
+    static java.util.List<String> scannerOptions(org.json.JSONObject models) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        for (java.util.Iterator<String> it = models.keys(); it.hasNext(); ) {
+            String key = it.next();
+            org.json.JSONObject m = models.optJSONObject(key);
+            if (m == null || "unsupported".equals(status(models, key))) continue;
+            String n = m.optString("name", "");
+            if (!n.isEmpty() && !out.contains(n)) out.add(n);
         }
         out.add(OTHER);
         return out;
+    }
+
+    /** A model's status, following "inherit" (the Sermoon P1 Lite inherits "unsupported" from the P1). */
+    static String status(org.json.JSONObject models, String key) {
+        for (int i = 0; key != null && i < 8; i++) {
+            org.json.JSONObject m = models.optJSONObject(key);
+            if (m == null) return "";
+            if (m.has("status")) return m.optString("status");
+            key = m.optString("inherit", null);
+        }
+        return "";
     }
 
     /**

@@ -183,6 +183,7 @@ public final class UsbDesc {
         int first = Hp.u32(d, off);
         if (g.equals("Y800") || g.equals("Y8  ") || g.equals("GREY") || first == 0x32) return "GREY"; // 0x32 = D3DFMT_L8
         if (g.equals("Y10 ")) return "Y10 ";
+        if (g.equals("Y14 ")) return "Y14 ";   // the Raptor's depth (MI_00 format 1, issue #15)
         if (g.equals("Y16 ")) return "Y16 ";
         if (g.equals("MJPG")) return "MJPG";
         if (g.equals("YUY2")) return "YUYV";
