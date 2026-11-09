@@ -10,6 +10,12 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+### Fixed
+- CR-Scan Raptor: the Infrared preview should start now. Creality Scan asks a Raptor behind a bridge for its IR
+  cameras as JPEG in that mode, which the bridge didn't offer, so the preview stopped before any video. The
+  bridge now makes the JPEGs from the IR frames, as Creality's own bridge does. Not confirmed on a Raptor yet.
+  The depth stream added in 0.2.6 turned out not to be what Infrared needs.
+
 ## [0.2.6] - 2026-11-09
 
 ### Changed
