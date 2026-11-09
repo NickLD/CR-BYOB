@@ -10,6 +10,8 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-11-09
+
 ### Changed
 - "Keep screen on while the bridge is running" is now on by default. If you turned it off before, it stays
   off.
