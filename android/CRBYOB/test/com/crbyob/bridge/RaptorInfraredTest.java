@@ -96,14 +96,23 @@ public class RaptorInfraredTest {
 
     @Test
     public void effectiveProfilesParseWithOrWithoutAHeader() {
-        int[] irl = {6, 1280, 800, 9, 40}, col = {2, 1280, 800, 5, 30};
+        int[] irl = {6, 9, 1280, 800, 40}, col = {2, 5, 1280, 800, 30};
         for (boolean header : new boolean[]{false, true}) {
             List<int[]> l = Bridge.parseEffectiveProfiles(entries(header, irl, col));
             assertEquals(2, l.size());
-            assertEquals("IR_L 1280x800 Y8<=40, COLOR 1280x800 MJPG<=30", Bridge.describeEffectiveProfiles(l));
+            assertEquals("IR_L Y8 1280x800<=40, COLOR MJPG 1280x800<=30", Bridge.describeEffectiveProfiles(l));
         }
         assertNull(Bridge.parseEffectiveProfiles(new byte[7]));
-        assertNull(Bridge.parseEffectiveProfiles(entries(false, new int[]{0, 1280, 800, 9, 40})));   // no sensor 0
+        assertNull(Bridge.parseEffectiveProfiles(entries(false, new int[]{0, 9, 1280, 800, 40})));   // no sensor 0
         assertNull(Bridge.parseEffectiveProfiles(new byte[0]));
+    }
+
+    @Test
+    public void otterEffectiveProfiles() {
+        // the Otter's 0xFC3 reply (fw 1.2.2), first 4 of its 12 entries: {sensorType, OBFormat, w, h, maxFps}
+        byte[] d = hex("070000000900000000050000200300001e000000070000000000000000050000200300001e000000"
+                + "070000000900000080020000900100001e000000060000000500000000050000200300001e000000");
+        assertEquals("IR_R Y8 1280x800<=30, IR_R YUYV 1280x800<=30, IR_R Y8 640x400<=30, IR_L MJPG 1280x800<=30",
+                Bridge.describeEffectiveProfiles(Bridge.parseEffectiveProfiles(d)));
     }
 }

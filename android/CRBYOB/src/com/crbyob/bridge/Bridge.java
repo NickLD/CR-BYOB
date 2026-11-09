@@ -717,7 +717,8 @@ public final class Bridge {
     static final int PROP_DEPTH_WORK_MODE = 0x413, OP_SET_STRUCT_EXT = 28;
     /**
      * Raw 0xFC3 OB_RAW_DATA_EFFECTIVE_VIDEO_STREAM_PROFILE_LIST: the modes the scanner allows in its current work
-     * mode, 20-byte entries {u32 sensorType, width, height, OBFormat, maxFps}. libOrbbecSDK's
+     * mode, 20-byte entries {u32 sensorType, OBFormat, width, height, maxFps} (the Otter's 240-byte reply, fw
+     * 1.2.2, read with ops 0x11-0x13 [O]). libOrbbecSDK's
      * Gemini2ProfileRestrictor keeps a UVC mode only if an entry matches, so the official bridge's 0xFC1 is
      * UVC modes x 0xFC3, re-read after each work mode switch [O SDK]. Only logged here for now (issue #15).
      */
@@ -785,7 +786,7 @@ public final class Bridge {
         return f;
     }
 
-    /** Reads 0xFC3 and logs it raw and, if it parses, as "IR_L 1280x800 Y8<=40" entries. Never throws. */
+    /** Reads 0xFC3 and logs it raw and, if it parses, as "IR_L Y8 1280x800<=30" entries. Never throws. */
     void logEffectiveProfiles(String why) {
         if (otter == null) return;
         String[] err = new String[1];
@@ -801,8 +802,8 @@ public final class Bridge {
     }
 
     /**
-     * 0xFC3 entries, from a bare 20-byte table or one behind a <u16 20, u16 count> header (as 0xFC1's
-     * <u16 18, u16 count>); null if neither fits or a field is out of range.
+     * 0xFC3 entries {sensorType, OBFormat, w, h, maxFps}, from a bare 20-byte table (the Otter's) or one behind a
+     * <u16 20, u16 count> header (as 0xFC1's <u16 18, u16 count>); null if neither fits or a field is out of range.
      */
     static List<int[]> parseEffectiveProfiles(byte[] d) {
         if (d == null || d.length == 0) return null;
@@ -813,8 +814,8 @@ public final class Bridge {
         List<int[]> out = new ArrayList<>();
         for (int i = start; i + 20 <= d.length; i += 20) {
             int[] e = {Hp.u32(d, i), Hp.u32(d, i + 4), Hp.u32(d, i + 8), Hp.u32(d, i + 12), Hp.u32(d, i + 16)};
-            if (e[0] < 1 || e[0] > 32 || e[1] < 1 || e[1] > 8192 || e[2] < 1 || e[2] > 8192
-                    || e[3] < 0 || e[3] > 255 || e[4] < 0 || e[4] > 1000) return null;
+            if (e[0] < 1 || e[0] > 32 || e[1] < 0 || e[1] > 255 || e[2] < 1 || e[2] > 8192
+                    || e[3] < 1 || e[3] > 8192 || e[4] < 0 || e[4] > 1000) return null;
             out.add(e);
         }
         return out;
@@ -824,8 +825,8 @@ public final class Bridge {
         StringBuilder sb = new StringBuilder();
         for (int[] e : l) {
             if (sb.length() > 0) sb.append(", ");
-            sb.append(sensorName(e[0])).append(' ').append(e[1]).append('x').append(e[2]).append(' ')
-                    .append(obFormatName(e[3])).append("<=").append(e[4]);
+            sb.append(sensorName(e[0])).append(' ').append(obFormatName(e[1])).append(' ')
+                    .append(e[2]).append('x').append(e[3]).append("<=").append(e[4]);
         }
         return sb.toString();
     }
