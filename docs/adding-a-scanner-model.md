@@ -78,11 +78,12 @@ Example `files/scanners.json` for an Otter variant that looks like the Otter:
   desktop JVM), but nobody has decoded it with a real client yet. It's offered for models with `"RLE"` in
   `ir_synth` that pass `ir_synth_min_fw`.
 - **Depth streams**: the Otter's "Depth Camera" interface carries the right IR image. The Raptor family
-  advertises its native Y14 depth (480×300@30 is the SDK config's default), which Creality Scan's Infrared
-  (speckle) mode appears to need. Y14 frames pass through unchanged, with no size check. The capture path
-  has only been tested with GREY and MJPG.
+  lists its native Y14 depth as the official bridge does, though Creality Scan never asks a Raptor for it.
+  Y14 frames pass through unchanged, with no size check. The capture path has only been tested with GREY
+  and MJPG.
 - Two streams on one VC (`[vc, n]`) assume the n-th VideoStreaming interface carries the n-th stream. That is
   inferred, not seen. If a Sermoon/Pika instead has one VS carrying both eyes, this needs new code.
-- Synthesized MJPG IR isn't offered: the app has no IR JPEG encoder in the default path.
+- Synthesized MJPG IR (`IrJpeg`, from Y8) is listed for models whose `ir_synth` has `MJPG`. Creality Scan's
+  Infrared mode asks a Raptor for it; the Otter's own table picks Y8.
 - Bandwidth: Raptor IR defaults to 1920×1200@50 per eye, more than Wi-Fi carries even with RLE. Which profile
   the app picks over a bridge is unknown. *This phone only* mode avoids the Wi-Fi limit.

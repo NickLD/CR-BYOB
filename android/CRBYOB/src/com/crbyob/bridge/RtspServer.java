@@ -138,8 +138,8 @@ final class RtspServer {
 
     /**
      * '/<type>/<w>_<h>_<fps>_<suffix>' -> {stream type, profile[, synthesized fourcc]}.
-     * An IR suffix the node can't capture but Bridge.IR_ENCODERS can make from GREY (RLE) returns the GREY
-     * profile plus that fourcc; the session then captures Y8 and encodes.
+     * An IR suffix Bridge.IR_ENCODERS can make from GREY (RLE, MJPG) and the model doesn't advertise natively
+     * returns the GREY profile plus that fourcc; the session then captures Y8 and encodes.
      */
     static Object[] parseSession(String path, UsbDesc.Vs vs, ScannerModel model) {
         String clean = path.split("\\?")[0];
@@ -152,11 +152,15 @@ final class RtspServer {
             String suffix = String.join("_", Arrays.copyOfRange(f, 3, f.length)).toLowerCase(Locale.US);
             String fourcc = model.suffixToV4l2(suffix);
             if (fourcc != null) {
-                for (UsbDesc.Profile p : vs.profiles) {
+                // IR in a format the model doesn't advertise natively (e.g. the Raptor's MJPG): encode it from Y8,
+                // as cameraServer does, even when the scanner has a native mode of that format
+                boolean synth = Bridge.isIr(stype) && Bridge.IR_ENCODERS.contains(fourcc);
+                boolean native_ = !synth || model.advertise("ir").contains(fourcc);
+                if (native_) for (UsbDesc.Profile p : vs.profiles) {
                     if (model.fmt(p.fourcc) != null && p.fourcc.equals(fourcc) && p.width == w && p.height == h && p.fps == fps)
                         return new Object[]{stype, p};
                 }
-                if (Bridge.isIr(stype) && Bridge.IR_ENCODERS.contains(fourcc)) {
+                if (synth) {
                     for (UsbDesc.Profile p : vs.profiles) {
                         if (p.fourcc.equals("GREY") && p.width == w && p.height == h && p.fps == fps)
                             return new Object[]{stype, p, fourcc};
@@ -400,7 +404,10 @@ final class RtspServer {
             }
             Object[] pr = parseSession(path, vs, model);
             synth = pr != null && pr.length > 2 ? (String) pr[2] : null;
-            if (pr != null && synth == null && Bridge.isIr((Integer) pr[0]) && ((UsbDesc.Profile) pr[1]).fourcc.equals("GREY")) {
+            if ("MJPG".equals(synth)) {                       // the Raptor's ir_l/ir_r *_mjpg: JPEG from Y8
+                irJpeg = true;
+                jpegQuality = bridge.streamMap().optInt("ir_jpeg_quality", model.irJpegQuality);
+            } else if (pr != null && synth == null && Bridge.isIr((Integer) pr[0]) && ((UsbDesc.Profile) pr[1]).fourcc.equals("GREY")) {
                 org.json.JSONObject m = bridge.streamMap();      // re-read at each session start
                 // "?jpeg=1" in the URL is a test hook; the app never sends it
                 irJpeg = m.optBoolean("ir_jpeg_over_y8", false) || path.contains("jpeg=1");
@@ -469,11 +476,14 @@ final class RtspServer {
                 RleCodec rle = synth != null && synth.equals("RLE ")
                         ? new RleCodec(p.width, p.height, bridge.rleThreshold(), model.rlePadTo) : null;
                 IrEncoder enc = irJpeg ? new IrJpeg(p.width, p.height, jpegQuality) : rle;
-                boolean gate = isIr && !irJpeg;      // paired IR decimation (IrGate); off in the IR-JPEG test mode
+                // paired IR decimation (IrGate): on for raw, RLE and the Raptor's MJPG (its speckle depth needs
+                // left/right pairs); off only in the ir_jpeg_over_y8 test mode
+                boolean gate = isIr && (!irJpeg || synth != null);
                 BLog.log("stream_start", "port", port, "node", "VS" + vs.iface, "type", stype, "profile", prof, "mirror", false,
                         "ir_jpeg", irJpeg, "quality", irJpeg ? (Object) jpegQuality : null, "synth", synth,
                         "rle_threshold", rle != null ? (Object) rle.threshold : null);
                 if (rle != null) prof = prof + "->RLE";
+                else if (irJpeg) prof = prof + "->JPEG";
                 statusText = "[" + stype + " " + prof.trim() + "]";
                 stat.active++;
                 stat.peer = conn.getInetAddress().getHostAddress();

@@ -43,10 +43,11 @@ public final class Bridge {
     }
 
     /**
-     * IR encodings this app can synthesize from Y8 and so may advertise in 0xFC1:
-     * RLE ({@link RleCodec}) for models whose ir_synth lists it. No MJPG: the Otter's IR stays Y8 as before.
+     * IR encodings this app can synthesize from Y8 and so may advertise in 0xFC1, for models whose ir_synth lists
+     * them: RLE ({@link RleCodec}) and MJPG ({@link IrJpeg}). cameraServer lists both copies of every Y8 IR mode;
+     * Creality Scan's Infrared mode asks the Raptor for IR_L/IR_R MJPG over a bridge (issue #15).
      */
-    static final Set<String> IR_ENCODERS = Collections.singleton("RLE ");
+    static final Set<String> IR_ENCODERS = new java.util.HashSet<>(Arrays.asList("RLE ", "MJPG"));
 
     /** Struct 0x42A (OB_STRUCT_IR_SENSOR_RLE_COMPRESSION_INFOMATION, 5 x i32); field 0 = RLE threshold. */
     static final int PROP_RLE_PARAMS = 0x42A;
@@ -330,6 +331,7 @@ public final class Bridge {
                 String fw = o.probeVersion();
                 if (fw != null) prefs.edit().putString("sub_fw", fw).putString("sub_sn", o.usbSerial.isEmpty() ? o.versionSn : o.usbSerial).apply();
                 BLog.log("scanner_ready", "pid", d.getProductId(), "fw", fw, "serial", o.usbSerial);
+                logEffectiveProfiles("open");
                 if (imu != null) imu.ensureReader();
             } catch (Exception e) {
                 BLog.log("usb_open_failed", "dev", d.getDeviceName(), "err", String.valueOf(e));
@@ -705,6 +707,156 @@ public final class Bridge {
         int v = irLightRequest(side);
         BLog.log("line_scan_get", "side", sideName, "value", v);
         return Hp.reply(op, reqId, Hp.fiveInts(v, LIGHT_ALL, 0, LIGHT_ALL, 1), 0);
+    }
+
+    // ------------------------------------------------------------------ depth work mode, 0xFC3
+    /**
+     * Struct 0x413, the scanner's current depth work mode ("Laser Lines Scan", "Chip Scale Speckle Scan", ...),
+     * set by the PC with op 28 at preview start. Payload: prop(4), 2 bytes, checksum(16), name(32), u32 option.
+     */
+    static final int PROP_DEPTH_WORK_MODE = 0x413, OP_SET_STRUCT_EXT = 28;
+    /**
+     * Raw 0xFC3 OB_RAW_DATA_EFFECTIVE_VIDEO_STREAM_PROFILE_LIST: the modes the scanner allows in its current work
+     * mode, 20-byte entries {u32 sensorType, OBFormat, width, height, maxFps} (the Otter's 240-byte reply, fw
+     * 1.2.2, read with ops 0x11-0x13 [O]). libOrbbecSDK's
+     * Gemini2ProfileRestrictor keeps a UVC mode only if an entry matches, so the official bridge's 0xFC1 is
+     * UVC modes x 0xFC3, re-read after each work mode switch [O SDK]. Only logged here for now (issue #15).
+     */
+    static final int PROP_EFFECTIVE_PROFILES = 0xFC3;
+
+    /** The work mode name in a 0x413 op-28 payload, or null. */
+    static String workModeName(byte[] payload) {
+        if (payload == null || payload.length < 22 + 32) return null;
+        int end = 22;
+        while (end < 54 && payload[end] != 0) end++;
+        String s = new String(payload, 22, end - 22, StandardCharsets.US_ASCII).trim();
+        return s.isEmpty() ? null : s;
+    }
+
+    /** After the scanner accepted a 0x413 set: as cameraServer does, all IR light types again; then log 0xFC3. */
+    void onWorkModeSet(byte[] payload) {
+        synchronized (lightRequest) {
+            lightRequest[0] = LIGHT_ALL;
+            lightRequest[1] = LIGHT_ALL;
+        }
+        BLog.log("work_mode_set", "name", workModeName(payload));
+        logEffectiveProfiles("work_mode");
+    }
+
+    /** A scanner blob read with ops 0x11/0x12/0x13 (as the SDK reads raw data), or null with the reason logged. */
+    byte[] scannerRawRead(int prop, String[] why) {
+        try {
+            byte[] r = forward(hpFrame(Hp.OP_INIT_READ_RAW, prop), Hp.OP_INIT_READ_RAW);
+            if (r == null || r.length < 14 || Hp.statusOf(r) != 0) {
+                why[0] = r == null ? "no reply" : "init status " + Hp.statusOf(r);
+                return null;
+            }
+            int size = Hp.u32(r, 10);
+            if (size < 0 || size > 65536) {
+                why[0] = "size " + size;
+                return null;
+            }
+            ByteArrayOutputStream out = new ByteArrayOutputStream(size);
+            for (int off = 0; off < size; ) {
+                int n = Math.min(768, size - off);
+                byte[] c = forward(hpFrame(Hp.OP_READ_RAW, prop, off, n), Hp.OP_READ_RAW);
+                if (c == null || c.length <= 10 || Hp.statusOf(c) != 0) {
+                    why[0] = "read status " + (c == null ? "none" : Hp.statusOf(c)) + " at " + off;
+                    break;
+                }
+                int got = Math.min(n, c.length - 10);
+                out.write(c, 10, got);
+                off += got;
+            }
+            forward(hpFrame(Hp.OP_FINISH_READ_RAW, prop), Hp.OP_FINISH_READ_RAW);
+            return why[0] == null ? out.toByteArray() : null;
+        } catch (Exception e) {
+            why[0] = String.valueOf(e);
+            return null;
+        }
+    }
+
+    private byte[] hpFrame(int op, int... words) {
+        byte[] f = new byte[8 + 4 * words.length];
+        Hp.putU16(f, 0, Hp.REQ_MAGIC);
+        Hp.putU16(f, 2, 2 * words.length);
+        Hp.putU16(f, 4, op);
+        Hp.putU16(f, 6, rnd.nextInt(1 << 15));
+        for (int i = 0; i < words.length; i++) Hp.putU32(f, 8 + 4 * i, words[i]);
+        return f;
+    }
+
+    /** Reads 0xFC3 and logs it raw and, if it parses, as "IR_L Y8 1280x800<=30" entries. Never throws. */
+    void logEffectiveProfiles(String why) {
+        if (otter == null) return;
+        String[] err = new String[1];
+        byte[] d = scannerRawRead(PROP_EFFECTIVE_PROFILES, err);
+        if (d == null) {
+            BLog.log("effective_profiles", "why", why, "err", err[0]);
+            return;
+        }
+        List<int[]> e = parseEffectiveProfiles(d);
+        BLog.log("effective_profiles", "why", why, "len", d.length,
+                "entries", e == null ? "unparsed" : describeEffectiveProfiles(e),
+                "hex", Hp.hex(d, 0, Math.min(d.length, 1024)));
+    }
+
+    /**
+     * 0xFC3 entries {sensorType, OBFormat, w, h, maxFps}, from a bare 20-byte table (the Otter's) or one behind a
+     * <u16 20, u16 count> header (as 0xFC1's <u16 18, u16 count>); null if neither fits or a field is out of range.
+     */
+    static List<int[]> parseEffectiveProfiles(byte[] d) {
+        if (d == null || d.length == 0) return null;
+        int start;
+        if (d.length >= 4 && Hp.u16(d, 0) == 20 && 4 + 20 * Hp.u16(d, 2) == d.length) start = 4;
+        else if (d.length % 20 == 0) start = 0;
+        else return null;
+        List<int[]> out = new ArrayList<>();
+        for (int i = start; i + 20 <= d.length; i += 20) {
+            int[] e = {Hp.u32(d, i), Hp.u32(d, i + 4), Hp.u32(d, i + 8), Hp.u32(d, i + 12), Hp.u32(d, i + 16)};
+            if (e[0] < 1 || e[0] > 32 || e[1] < 0 || e[1] > 255 || e[2] < 1 || e[2] > 8192
+                    || e[3] < 1 || e[3] > 8192 || e[4] < 0 || e[4] > 1000) return null;
+            out.add(e);
+        }
+        return out;
+    }
+
+    static String describeEffectiveProfiles(List<int[]> l) {
+        StringBuilder sb = new StringBuilder();
+        for (int[] e : l) {
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(sensorName(e[0])).append(' ').append(obFormatName(e[1])).append(' ')
+                    .append(e[2]).append('x').append(e[3]).append("<=").append(e[4]);
+        }
+        return sb.toString();
+    }
+
+    static String sensorName(int t) {
+        switch (t) {
+            case 1: return "IR";
+            case 2: return "COLOR";
+            case 3: return "DEPTH";
+            case 4: return "ACCEL";
+            case 5: return "GYRO";
+            case 6: return "IR_L";
+            case 7: return "IR_R";
+            default: return "S" + t;
+        }
+    }
+
+    /** OBFormat names (libOrbbecSDK v1 numbering; 5/9/21/22/24 seen in the client's tables). */
+    static String obFormatName(int f) {
+        switch (f) {
+            case 0: return "YUYV";
+            case 5: return "MJPG";
+            case 8: return "Y16";
+            case 9: return "Y8";
+            case 10: return "Y10";
+            case 21: return "RLE";
+            case 22: return "RGB";
+            case 24: return "Y14";
+            default: return "F" + f;
+        }
     }
 
     // ------------------------------------------------------------------ bridge-owned props

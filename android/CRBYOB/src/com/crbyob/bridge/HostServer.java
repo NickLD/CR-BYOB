@@ -198,6 +198,8 @@ public final class HostServer {
             }
             if (r != null) {
                 note[0] = "forwarded status=" + Hp.statusOf(r) + " len=" + r.length;
+                if (op == Bridge.OP_SET_STRUCT_EXT && prop == Bridge.PROP_DEPTH_WORK_MODE && Hp.statusOf(r) == 0)
+                    b.onWorkModeSet(payload);
                 return r;
             }
             note[0] = "forward-failed";
