@@ -151,19 +151,21 @@
     "0x0C0B": {
       "inherit": "0x0C05",
       "name": "Creality Pika",
+      "status": "unsupported",
       "sdk_class": "PikaDevice",
       "advertise": {"ir": ["GREY"]},
       "ir_synth": ["RLE"],
       "ir_pre_stream_props": [[112, 1], [18, 1]],
       "ir_jpeg_quality": 98,
       "scan_options": {"projection": ["infrared", "blue_light"], "scan_mode": ["face", "obj_small", "obj_medium", "obj_big", "human"], "accuracy": ["high"], "light_type": ["parallel"]},
-      "notes": "App name RAPTOR_PIKA. Line-laser layout [O client]. Not in the official bridge SDK; it has its own network mode (wireless interconnection), so a bridge is probably unnecessary. Client IR chain: TurboJpeg + BlockStdDev RLE [O]. Pre-stream props are cameraServer's generic default [I]."
+      "notes": "Unsupported: a self-contained wireless scanner (Creality Scan's 'wireless interconnection' mode, like the Sermoon P1/P1S) that no Scan Bridge serves. App name RAPTOR_PIKA. Line-laser layout [O client]. Not in the official bridge SDK. Client IR chain: TurboJpeg + BlockStdDev RLE [O]. Pre-stream props are cameraServer's generic default [I]."
     },
     "0x0C10": {
       "inherit": "0x0C0B",
-      "name": "M1 Ultra",
+      "name": "Elegoo M1 Ultra",
+      "status": "unsupported",
       "scan_options": {"projection": ["infrared", "blue_light"], "scan_mode": ["face", "obj_small", "obj_medium", "obj_big", "human"], "accuracy": ["high"], "light_type": ["parallel", "cross", "single"], "fov": ["normal", "wide"]},
-      "notes": "Built by the client's Pika creator [O]; product unknown. Not in the official bridge SDK."
+      "notes": "Unsupported: Elegoo's handheld all-in-one scanner (built-in Wi-Fi and processing, launched Oct 2026), not a Creality one. Creality Scan's SDK knows the PID and builds it like the Pika [O]; listed only so the app recognizes it. Not in the official bridge SDK."
     },
     "0x0C08": {
       "inherit": "0x0C05",

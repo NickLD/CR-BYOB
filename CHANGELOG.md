@@ -10,6 +10,11 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+### Changed
+- Self-contained wireless scanners (Sermoon P1, Sermoon P1 Lite, Creality Pika) are listed as not supported and
+  no longer offered in the device report's scanner list: they connect on their own and don't work through a
+  Scan Bridge. The Elegoo M1 Ultra, which Creality Scan's SDK happens to know, isn't listed any more either.
+
 ## [0.2.5] - 2026-11-09
 
 ### Added
