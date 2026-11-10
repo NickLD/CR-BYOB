@@ -97,6 +97,8 @@ scanner's streams need more bandwidth than USB 2 provides.
 | [Google Pixel 10 Pro XL](docs/phones.md#google-pixel-10-pro-xl) | 16 | ✅ | ✅ | ✅ | ✅ | [@NickLD](https://github.com/NickLD) |
 | [Google Pixel 6](docs/phones.md#google-pixel-6) | 17 | — | ✅ | ✅ | — | [@Xalies](https://github.com/Xalies) |
 | [Google Pixel 5](docs/phones.md#google-pixel-5) | 14 | ✅ | 🟡 | 🟡 | ⚠️ | [@NickLD](https://github.com/NickLD) |
+| [Samsung Galaxy S23 Ultra](docs/phones.md#samsung-galaxy-s23-ultra) | 16 | — | — | — | ✅ | [@lihomanovdv](https://github.com/lihomanovdv) |
+| [Samsung Galaxy Z Flip 8](docs/phones.md#samsung-galaxy-z-flip-8) | 17 | — | ✅ | — | — | [@SelfMadeDiesel](https://github.com/SelfMadeDiesel) |
 
 ✅ Full performance &nbsp;·&nbsp; 🟡 Works, with limits &nbsp;·&nbsp; ⚠️ Not recommended &nbsp;·&nbsp; — Not tested &nbsp;·&nbsp;
 **[Notes per phone](docs/phones.md)**

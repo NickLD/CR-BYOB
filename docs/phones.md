@@ -8,6 +8,8 @@ port unless the phone's section names another scanner.
 | [Google Pixel 10 Pro XL](#google-pixel-10-pro-xl) | 16 | ✅ | ✅ | ✅ | ✅ | [@NickLD](https://github.com/NickLD) |
 | [Google Pixel 6](#google-pixel-6) | 17 | — | ✅ | ✅ | — | [@Xalies](https://github.com/Xalies) |
 | [Google Pixel 5](#google-pixel-5) | 14 | ✅ | 🟡 | 🟡 | ⚠️ | [@NickLD](https://github.com/NickLD) |
+| [Samsung Galaxy S23 Ultra](#samsung-galaxy-s23-ultra) | 16 | — | — | — | ✅ | [@lihomanovdv](https://github.com/lihomanovdv) |
+| [Samsung Galaxy Z Flip 8](#samsung-galaxy-z-flip-8) | 17 | — | ✅ | — | — | [@SelfMadeDiesel](https://github.com/SelfMadeDiesel) |
 
 ✅ Full performance &nbsp;·&nbsp; 🟡 Works, with limits &nbsp;·&nbsp; ⚠️ Not recommended &nbsp;·&nbsp; — Not tested
 
@@ -60,3 +62,29 @@ Android 14 · Reported by [@NickLD](https://github.com/NickLD)
 **Wi-Fi and Wi-Fi Direct at the same time** severely hinders performance. The two share the phone's radio.
 The app warns when the phone is still on a Wi-Fi network while Wi-Fi Direct runs. Disconnect from that
 network, or use Ethernet.
+
+## Samsung Galaxy S23 Ultra
+
+Android 16 · Reported by [@lihomanovdv](https://github.com/lihomanovdv) ([#12](https://github.com/NickLD/CR-BYOB/issues/12))
+
+| Connection | Result |
+|---|---|
+| Ethernet | — Not tested |
+| Wi-Fi | — Not tested |
+| Wi-Fi Direct | — Not tested |
+| This phone only (Local Mobile App Scanning) | ✅ Preview and a full scan on the `Max` frame-rate setting: 28 to 30 fps, every frame sent. |
+
+Tested with CrealityScan 3.1.2 on Android, powered from the phone with no external battery.
+
+## Samsung Galaxy Z Flip 8
+
+Android 17 · Reported by [@SelfMadeDiesel](https://github.com/SelfMadeDiesel) ([#20](https://github.com/NickLD/CR-BYOB/issues/20))
+
+| Connection | Result |
+|---|---|
+| Ethernet | — Not tested |
+| Wi-Fi | ✅ Preview and a full scan on the `Max` frame-rate setting over 6 GHz Wi-Fi 7: about 30 fps, 99 to 100% of frames sent. |
+| Wi-Fi Direct | — Not tested |
+| This phone only (Local Mobile App Scanning) | — Not tested |
+
+Measured over 7 minutes of streaming.
