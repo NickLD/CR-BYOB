@@ -10,6 +10,12 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-11-10
+
+### Fixed
+- Android 8 and 9: Creality Scan can connect to the bridge now. On these versions the bridge closed every
+  connection right after accepting it, so it never worked there. Android 10 and later weren't affected.
+
 ## [0.2.7] - 2026-11-09
 
 ### Changed
