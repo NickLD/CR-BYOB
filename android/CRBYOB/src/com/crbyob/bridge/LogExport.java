@@ -403,10 +403,13 @@ final class LogExport {
         }
     }
 
-    /** The scanner setup kinds kept for the report (BLog pins the same ones in memory). */
+    /**
+     * The setup kinds kept for the report (BLog pins the same ones in memory): the scanner's, plus
+     * tcp_tune_legacy, the Android 8/9 socket workaround in StallGuard.
+     */
     static final Set<String> PINNED_KINDS = new HashSet<>(java.util.Arrays.asList(
             "app_version", "bridge_started", "scanner_ready", "usb_open", "usb_vs_modes", "scanner_model", "scanner_roles",
-            "effective_profiles", "work_mode_set"));
+            "effective_profiles", "work_mode_set", "tcp_tune_legacy"));
 
     /** A setup line's slot: its kind, per interface for usb_vs_modes. Null for other lines. */
     static String pinKey(String line) {
