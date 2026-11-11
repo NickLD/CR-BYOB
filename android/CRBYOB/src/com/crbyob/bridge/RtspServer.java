@@ -489,7 +489,8 @@ final class RtspServer {
                 stat.peer = conn.getInetAddress().getHostAddress();
                 stat.profile = prof.trim();
                 stat.fps = p.fps;
-                if (isIr && bridge.fpsFloor() == 0) bridge.noteStockFps(p.fps);   // what Creality Scan asks for unboosted
+                // what Creality Scan asks for unboosted, at this size
+                if (isIr && bridge.fpsFloor(p.width, p.height) == 0) bridge.noteStockFps(p.width, p.height, p.fps);
                 long capSeen = 0, dropSeen = 0;
 
                 byte[] hdr = new byte[34];

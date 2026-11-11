@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 
@@ -514,32 +515,55 @@ public final class Bridge {
         return FpsChoice.normalize(streamMap().optString("fps_mode", FpsChoice.STOCK));
     }
 
-    /** The attached scanner's frame-rate choices, or null if no scanner is open. */
-    FpsChoice fpsChoice() {
+    /** The IR stream's UVC modes (ir_l, else ir), or null if no scanner is open. */
+    private List<UsbDesc.Profile> irProfiles() {
         UsbDesc.Vs vs = vsFor("ir_l");
         if (vs == null) vs = vsFor("ir");
-        if (vs == null) return null;
-        int stock = model.bridgeFps > 0 ? model.bridgeFps : prefs.getInt("stock_fps_" + model.pid, 0);
-        return FpsChoice.of(vs.profiles, stock);
+        return vs == null ? null : vs.profiles;
+    }
+
+    private String stockKey(int w, int h) {
+        return "stock_fps_" + model.pid + "_" + w + "x" + h;
+    }
+
+    /** Stock rates learned per IR size (models without bridge_fps for that size). */
+    private int learnedStock(int w, int h) {
+        return prefs.getInt(stockKey(w, h), 0);
+    }
+
+    /** The attached scanner's frame-rate choices as the dashboard shows them, or null if no scanner is open. */
+    FpsChoice fpsChoice() {
+        List<UsbDesc.Profile> ir = irProfiles();
+        return ir == null ? null : FpsChoice.shown(ir, model, this::learnedStock);
+    }
+
+    /** Other IR sizes with rates of their own (the Raptor's Infrared sizes), for the dashboard; empty if none. */
+    List<FpsChoice> fpsChoiceOthers() {
+        List<UsbDesc.Profile> ir = irProfiles();
+        return ir == null ? new ArrayList<>() : FpsChoice.others(ir, model, this::learnedStock);
     }
 
     /**
-     * Modes slower than this are left out of 0xFC1 (0 = none). stream_map.json "fps_floor" (any number, for tests)
-     * wins over "fps_mode".
+     * Modes of size w x h slower than this are left out of 0xFC1 (0 = none). stream_map.json "fps_floor" (any
+     * number, for tests, every size) wins over "fps_mode".
      */
-    int fpsFloor() {
+    int fpsFloor(int w, int h) {
         JSONObject j = streamMap();
         int explicit = j.optInt("fps_floor", 0);
         if (explicit > 0) return explicit;
-        FpsChoice c = fpsChoice();
-        return c == null ? 0 : c.floorFor(FpsChoice.normalize(j.optString("fps_mode", FpsChoice.STOCK)));
+        List<UsbDesc.Profile> ir = irProfiles();
+        return ir == null ? 0 : FpsChoice.floor(ir, model, this::learnedStock, j.optString("fps_mode", FpsChoice.STOCK), w, h);
     }
 
-    /** Creality Scan started IR at fps with no floor: that's its Stock rate for a model without bridge_fps. */
-    void noteStockFps(int fps) {
-        if (model.bridgeFps > 0 || fps <= 0 || prefs.getInt("stock_fps_" + model.pid, 0) == fps) return;
-        prefs.edit().putInt("stock_fps_" + model.pid, fps).apply();
-        BLog.log("stock_fps_learned", "pid", model.pid, "fps", fps);
+    /**
+     * Creality Scan started IR at w x h @ fps with no floor there: its Stock rate at that size, for a model without
+     * bridge_fps for it. Kept per size: a Raptor's blue-line (1920x1200) and Infrared (1280x800, 960x600) differ.
+     */
+    void noteStockFps(int w, int h, int fps) {
+        if (model.stockFps(w, h) > 0 || fps <= 0 || prefs.getInt(stockKey(w, h), 0) == fps) return;
+        // "stock_fps_<pid>": 0.2.8 and older kept one rate for every size
+        prefs.edit().putInt(stockKey(w, h), fps).remove("stock_fps_" + model.pid).apply();
+        BLog.log("stock_fps_learned", "pid", model.pid, "size", w + "x" + h, "fps", fps);
     }
 
     /** stream_map.json "imu" wins over the model. */
@@ -570,7 +594,9 @@ public final class Bridge {
         Otter o = otter;
         String fw = o != null ? o.fwVersion : null;
         ByteArrayOutputStream body = new ByteArrayOutputStream();
-        int count = 0, floor = fpsFloor(), hidden = 0;
+        int count = 0, hidden = 0;
+        Map<String, Integer> floors = new TreeMap<>();     // size -> fps floor, for the log
+        Map<String, Integer> floorCache = new HashMap<>();
         for (String stream : m.fc1Order) {
             UsbDesc.Vs vs = vsFor(stream);
             if (vs == null) continue;
@@ -580,7 +606,13 @@ public final class Bridge {
                 if (!allowed.contains(p.fourcc)) continue;
                 ScannerModel.Fmt f = m.fmt(p.fourcc);
                 if (f == null || !f.fc1) continue;
-                if (UsbDesc.belowFpsFloor(vs.profiles, p, floor)) { hidden++; continue; }
+                String size = p.width + "x" + p.height;
+                Integer floor = floorCache.get(size);
+                if (floor == null) floorCache.put(size, floor = fpsFloor(p.width, p.height));
+                if (floor > 0) floors.put(size, floor);
+                // above the scanner's top rate at this size: Creality's bridge leaves these out (0xFC3)
+                int cap = isIr(st) ? m.fpsCap(p.width, p.height) : 0;
+                if (cap > 0 && p.fps > cap || UsbDesc.belowFpsFloor(vs.profiles, p, floor)) { hidden++; continue; }
                 videoEntry(body, st, p, f.ob);
                 count++;
                 if (isIr(st) && p.fourcc.equals("GREY")) {
@@ -597,7 +629,7 @@ public final class Bridge {
             for (int[] a : m.accelProfiles) { byte[] e = new byte[18]; Hp.putU16(e, 0, ST_ACCEL); Hp.putU16(e, 2, a[0]); Hp.putU16(e, 4, a[1]); body.write(e, 0, 18); count++; }
             for (int[] g : m.gyroProfiles) { byte[] e = new byte[18]; Hp.putU16(e, 0, ST_GYRO); Hp.putU16(e, 2, g[0]); Hp.putU16(e, 4, g[1]); body.write(e, 0, 18); count++; }
         }
-        if (floor > 0) BLog.log("fc1_fps_floor", "floor", floor, "hidden", hidden, "advertised", count);
+        if (hidden > 0) BLog.log("fc1_fps_floor", "floors", floors.toString(), "hidden", hidden, "advertised", count);
         byte[] b = body.toByteArray();
         byte[] out = Arrays.copyOf(u16le(18, count), 4 + b.length);
         System.arraycopy(b, 0, out, 4, b.length);
