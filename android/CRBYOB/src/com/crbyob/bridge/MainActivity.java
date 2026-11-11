@@ -1508,7 +1508,7 @@ public final class MainActivity extends Activity {
             label[1] = "Boost · " + c.boost + " fps · ~" + c.mbps(c.boost) + " Mbit/s · " + BOOST_NOTE;
             label[2] = "Max · " + c.max + " fps · ~" + c.mbps(c.max) + " Mbit/s · " + MAX_LINK;
         }
-        boolean none = c != null && c.max == 0;
+        boolean none = c != null && c.max == 0 && c.boost == 0;
         // Creality Scan reads the rate list (0xFC1) when it connects, so a change while a PC is connected wouldn't
         // apply until it reconnects: lock it like the network choice.
         boolean locked = s.pcs > 0;
@@ -1516,14 +1516,14 @@ public final class MainActivity extends Activity {
                 : none ? "This scanner already streams at its top rate."
                 : locked ? "Creality Scan is connected. Close it to change the frame rate."
                 : "Applies the next time Creality Scan connects. The bridge can keep running.";
+        if (c != null && c.width > 0 && !s.fpsOthers.isEmpty()) note = note + "\n" + FpsChoice.othersNote(c, s.fpsOthers);
         fpsTitle.setText(locked ? "Scanner frame-rate override (close Creality Scan to change)" : "Scanner frame-rate override");
         String key = saved + "|" + String.join("|", label) + "|" + offered[1] + offered[2] + "|" + note + "|" + locked;
         if (key.equals(fpsKey)) return;
         fpsKey = key;
         fpsNote.setText(note);
-        // a mode this scanner doesn't offer runs as Stock (Bridge.fpsFloor), so show it that way
-        String effective = FpsChoice.BOOST.equals(saved) && offered[1] || FpsChoice.MAX.equals(saved) && offered[2]
-                ? saved : FpsChoice.STOCK;
+        // a mode this scanner doesn't offer runs as Stock, or Max as Boost (FpsChoice.floorFor), so show it that way
+        String effective = c == null ? FpsChoice.normalize(saved) : c.effective(saved);
         fpsUpdating = true;
         for (int i = 0; i < 3; i++) {
             RadioButton rb = (RadioButton) fpsGroup.getChildAt(i);

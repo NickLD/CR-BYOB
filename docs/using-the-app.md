@@ -84,6 +84,10 @@ closest rate on offer.
 | **Boost** | 20 fps, ~380 Mbit/s | the scanner's rate closest to halfway between Stock and Max |
 | **Max** | 30 fps, ~570 Mbit/s | the scanner's fastest mode; needs a very fast and stable link (Wi-Fi 6E/7 or Gigabit Ethernet) |
 
+A CR-Scan Raptor uses different camera sizes per scan mode, so it gets separate rates for each. The card shows
+blue-line's (Stock 30, Boost 40, Max 50 fps) and notes Infrared's below them (Stock 20, Boost 30). Infrared
+has no Max: the scanner tops out at 30 fps in that mode, so on Max it runs at Boost.
+
 Wired Gigabit is the safe choice for Max. A phone very close to a Wi-Fi 6E/7 access point can link faster
 than Gigabit and has handled Max too (in one test it ran smoother than USB Ethernet); the viewer's stats panel
 shows the Wi-Fi signal and link rate to judge it. The rates come from the attached scanner, so the card shows

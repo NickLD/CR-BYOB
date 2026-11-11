@@ -10,6 +10,15 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-11-10
+
+### Fixed
+- CR-Scan Raptor: Boost and Max no longer depend on the scan mode used last. The bridge kept one Stock rate
+  per scanner, taken from the last scan, so Boost moved between 30 and 40 fps or went missing. Blue-line and
+  Infrared now have their own rates: blue-line Stock 30, Boost 40, Max 50; Infrared Stock 20, Boost 30.
+- CR-Scan Raptor: Infrared on Max no longer stalls. It asked the scanner for 50 fps, above the 30 it can do in
+  that mode. Infrared now has no Max, and choosing Max runs it at Boost (30 fps), which works.
+
 ## [0.2.8] - 2026-11-10
 
 ### Fixed

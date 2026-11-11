@@ -75,6 +75,7 @@ final class Dash {
         String advertiseSaved = "";     // the user's choice ("" = automatic)
         String fpsMode = FpsChoice.STOCK;  // scanner frame rate: stock | boost | max
         FpsChoice fpsChoice;            // the attached scanner's rates, null while no scanner is open
+        List<FpsChoice> fpsOthers = new ArrayList<>();  // its other IR sizes with rates of their own (Raptor Infrared)
         boolean advertiseDown;          // the network locked at Start has gone away
         String ethName, ethIp, lanIp;
         String ethNoIp;          // wired adapter with link up but no IPv4 (DHCP not done / failed)
@@ -506,6 +507,7 @@ final class Dash {
         s.advertiseSaved = b.savedAdvertise();
         s.fpsMode = b.fpsMode();
         s.fpsChoice = b.fpsChoice();
+        s.fpsOthers = b.fpsChoiceOthers();
         if (anyVideo && "p2p".equals(s.advertise) && s.staConnected) {   // Wi-Fi Direct sharing the radio with the STA
             ss.p2pDualMs += dtMs;
             ss.p2pDualFreq = s.staFreq;

@@ -55,7 +55,11 @@ final class ScannerModel {
      */
     final Map<Integer, Integer> irLightTypes = new LinkedHashMap<>();
     final int irJpegQuality;
-    final int bridgeFps;      // Creality Scan's own IR fps behind a bridge ("Stock"), 0 = unknown (learned at runtime)
+    final int bridgeFps;      // Creality Scan's own IR fps behind a bridge ("Stock") at any size, 0 = by size or unknown
+    /** bridge_fps given per IR size ("1280x800" -> fps): scanners whose scan modes use different sizes and rates. */
+    final Map<String, Integer> bridgeFpsBySize = new LinkedHashMap<>();
+    /** fps_cap: the scanner's top IR rate per size in the scan mode that uses it (its 0xFC3 list there). */
+    final Map<String, Integer> fpsCapBySize = new LinkedHashMap<>();
     final boolean imuPresent;
     final int hidInterface;                 // -1: first HID interface
     final List<int[]> accelProfiles = new ArrayList<>(), gyroProfiles = new ArrayList<>();
@@ -143,6 +147,34 @@ final class ScannerModel {
         return merge(modelDict(doc, parent, seen), own);
     }
 
+    private static void sizeMap(JSONObject o, Map<String, Integer> out) throws Exception {
+        if (o != null) for (Iterator<String> it = o.keys(); it.hasNext(); ) {
+            String k = it.next();
+            out.put(k.trim().toLowerCase(Locale.ROOT), o.getInt(k));
+        }
+    }
+
+    private static String size(int w, int h) {
+        return w + "x" + h;
+    }
+
+    /** Creality Scan's Stock IR rate at w x h behind a bridge, 0 = unknown (the bridge learns it). */
+    int stockFps(int w, int h) {
+        Integer s = bridgeFpsBySize.get(size(w, h));
+        return s != null ? s : bridgeFps;
+    }
+
+    /** The scanner's top IR rate at w x h, 0 = no cap beyond its UVC modes. */
+    int fpsCap(int w, int h) {
+        Integer c = fpsCapBySize.get(size(w, h));
+        return c != null ? c : 0;
+    }
+
+    /** Whether bridge_fps or fps_cap lists w x h. */
+    boolean hasSizeRates(int w, int h) {
+        return bridgeFpsBySize.containsKey(size(w, h)) || fpsCapBySize.containsKey(size(w, h));
+    }
+
     /** The model for this PID (defaults if it isn't listed). Falls back to built-in defaults on any error. */
     static ScannerModel forPid(JSONObject doc, int pid) {
         try {
@@ -224,7 +256,10 @@ final class ScannerModel {
             irLightTypes.put(Integer.decode(k.trim()) & 0xFF, lt.getInt(k));
         }
         this.irJpegQuality = m.optInt("ir_jpeg_quality", 98);
-        this.bridgeFps = m.optInt("bridge_fps", 0);
+        JSONObject bf = m.optJSONObject("bridge_fps");
+        this.bridgeFps = bf != null ? 0 : m.optInt("bridge_fps", 0);
+        sizeMap(bf, bridgeFpsBySize);
+        sizeMap(m.optJSONObject("fps_cap"), fpsCapBySize);
         JSONObject imu = m.optJSONObject("imu");
         this.imuPresent = imu != null && imu.optBoolean("present", false);
         this.hidInterface = imu == null || imu.isNull("hid_interface") ? -1 : imu.optInt("hid_interface", -1);
