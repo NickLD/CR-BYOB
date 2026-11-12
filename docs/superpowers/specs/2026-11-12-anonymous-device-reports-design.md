@@ -112,11 +112,15 @@ All in shared code (`android/CRBYOB/src/...`), reusing what exists:
   and any replies are public, and it's tagged so later reports from this phone can be matched.
 - **Stored** (in `bridge` prefs): the bot login from the first `/report` response; per report the issue number,
   the issue's comment total last seen, the id of the newest developer comment seen, and closed or not.
-- **Which comments count** (*Claude's call*): only comments whose `author_association` is `OWNER`, `MEMBER` or
-  `COLLABORATOR` count as "the developer replied" and are shown in the app, plus this phone's own replies (author
-  = the stored bot login and the reporter-reply marker with this phone's tag), shown as "You". Comments from other
-  GitHub users, other bots, or the reporter's own replies never raise the card; other users' comments are readable
-  through "Open on GitHub". This also keeps arbitrary user content out of the Play build.
+- **Which comments count:** a comment counts as "the developer replied" (raises the card, shown in the app) when
+  its `author_association` is `OWNER`, `MEMBER` or `COLLABORATOR`, **or** its author's `type` is `Bot`. The owner
+  plans a bot that triages reports and asks reporters for details and troubleshooting steps, and its comments must
+  reach the reporter whether it posts with the owner's token (counts as `OWNER`) or as its own GitHub App (a `Bot`).
+  A bot can only comment on CR-BYOB if the owner installed its App there, so this doesn't let strangers in.
+  This phone's own replies (author = the stored bot login **and** the reporter-reply marker with this phone's tag;
+  both, so the triage bot could even share the App) show as "You" and never raise the card. Comments from other
+  GitHub users never raise the card and aren't shown; they're readable through "Open on GitHub". This also keeps
+  arbitrary user content out of the Play build.
 - **Reply check:** when `MainActivity` resumes, if "Check for replies" is on, there are open reports, and the last
   check was over 15 minutes ago: for each open report, one unauthenticated `GET
   api.github.com/repos/<repo>/issues/<n>` (public, 60 requests/hour per IP) for `comments` and `state`. Only if the
