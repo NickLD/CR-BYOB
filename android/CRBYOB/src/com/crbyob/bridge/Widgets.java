@@ -68,30 +68,35 @@ final class Widgets {
         for (int w : which) {
             android.widget.Button b = d.getButton(w);
             if (b == null || b.getVisibility() != View.VISIBLE || b.getText().length() == 0) continue;
-            boolean primary = w == android.app.AlertDialog.BUTTON_POSITIVE;
-            b.setAllCaps(false);
-            b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15);
-            b.setTextColor(primary ? BG : TEXT);
-            if (primary) b.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-            b.setBackground(roundRect(primary ? BLUE : LINE, dp(c, 10)));
-            b.setPadding(dp(c, 16), dp(c, 4), dp(c, 16), dp(c, 4));
-            b.setMinHeight(dp(c, 40));
-            b.setMinimumHeight(dp(c, 40));
-            android.view.ViewGroup.LayoutParams lp = b.getLayoutParams();
-            if (lp instanceof android.view.ViewGroup.MarginLayoutParams) {
-                ((android.view.ViewGroup.MarginLayoutParams) lp).setMargins(dp(c, 8), 0, 0, dp(c, 8));
-                b.setLayoutParams(lp);
-            }
-            // The button bar is a horizontal LinearLayout with gravity=bottom; with baseline alignment on (the
-            // default) the restyled buttons end up 2 x the bottom margin above where they belong and their tops
-            // are clipped by the bar.
-            if (b.getParent() instanceof android.widget.LinearLayout)
-                ((android.widget.LinearLayout) b.getParent()).setBaselineAligned(false);
+            styleButton(b, w == android.app.AlertDialog.BUTTON_POSITIVE);
         }
         // the title (when the dialog has one) in the dashboard's text color
         int id = c.getResources().getIdentifier("alertTitle", "id", "android");
         android.widget.TextView t = id != 0 ? d.findViewById(id) : null;
         if (t != null) t.setTextColor(TEXT);
+    }
+
+    /** A dialog button in the dashboard's style: filled blue when primary, grey otherwise. Call once it has a parent. */
+    static void styleButton(android.widget.Button b, boolean primary) {
+        Context c = b.getContext();
+        b.setAllCaps(false);
+        b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15);
+        b.setTextColor(primary ? BG : TEXT);
+        if (primary) b.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        b.setBackground(roundRect(primary ? BLUE : LINE, dp(c, 10)));
+        b.setPadding(dp(c, 16), dp(c, 4), dp(c, 16), dp(c, 4));
+        b.setMinHeight(dp(c, 40));
+        b.setMinimumHeight(dp(c, 40));
+        android.view.ViewGroup.LayoutParams lp = b.getLayoutParams();
+        if (lp instanceof android.view.ViewGroup.MarginLayoutParams) {
+            ((android.view.ViewGroup.MarginLayoutParams) lp).setMargins(dp(c, 8), 0, 0, dp(c, 8));
+            b.setLayoutParams(lp);
+        }
+        // The button bar is a horizontal LinearLayout with gravity=bottom; with baseline alignment on (the
+        // default) the restyled buttons end up 2 x the bottom margin above where they belong and their tops
+        // are clipped by the bar.
+        if (b.getParent() instanceof android.widget.LinearLayout)
+            ((android.widget.LinearLayout) b.getParent()).setBaselineAligned(false);
     }
 
     static int heroColor(int state) {

@@ -597,6 +597,7 @@ final class DeviceReport {
         private boolean tried;                       // Continue was tapped once: missing fields show in red
         private android.app.AlertDialog dialog;
         private android.widget.TextView githubLink;   // "Send with my own GitHub account instead", null when anon is off
+        private android.widget.Button sendBtn, cancelBtn;   // the anonymous dialog's own buttons, null when anon is off
         private boolean anon;                        // this submit goes to the report Worker, not the GitHub form
 
         Review(Activity a, Fields f) {
@@ -791,16 +792,6 @@ final class DeviceReport {
                     + "carry a tag that links reports from this phone." : ""));
             privacy.setPadding(0, dp(12), 0, 0);
             body.addView(privacy);
-            if (AnonReports.enabled()) {
-                githubLink = text(13, Widgets.BLUE);
-                githubLink.setText("Send with my own GitHub account instead \u203A");
-                githubLink.setPadding(0, dp(6), 0, dp(2));
-                githubLink.setOnClickListener(v -> {
-                    anon = false;
-                    if (submit()) dialog.dismiss();
-                });
-                body.addView(githubLink);
-            }
             error = text(14, Widgets.RED);
             error.setPadding(0, dp(8), 0, 0);
             error.setVisibility(android.view.View.GONE);
@@ -809,38 +800,64 @@ final class DeviceReport {
             android.widget.ScrollView sv = new android.widget.ScrollView(a);
             sv.addView(body);
             scroll = sv;
-            android.app.AlertDialog d = new android.app.AlertDialog.Builder(a)
-                    .setTitle("Device report")
-                    .setView(sv)
-                    .setPositiveButton(AnonReports.enabled() ? "Send Anonymous Report Without GitHub" : "Continue on GitHub", null)
-                    .setNegativeButton("Cancel", null)
-                    .create();
+            android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(a).setTitle("Device report");
+            if (AnonReports.enabled()) {
+                b.setView(anonFooter(sv));
+            } else {
+                b.setView(sv).setPositiveButton("Continue on GitHub", null).setNegativeButton("Cancel", null);
+            }
+            android.app.AlertDialog d = b.create();
             if (d.getWindow() != null)
                 d.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-            d.setOnShowListener(x -> d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-                anon = AnonReports.enabled();
-                if (submit() && !anon) d.dismiss();    // sendAnon dismisses only once the send worked
-            }));
-            if (AnonReports.enabled()) keepButtonsWhole(d);
+            if (AnonReports.enabled()) {
+                sendBtn.setOnClickListener(v -> {
+                    anon = true;
+                    submit();                          // sendAnon dismisses only once the send worked
+                });
+                cancelBtn.setOnClickListener(v -> d.dismiss());
+            } else {
+                d.setOnShowListener(x -> d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                    anon = false;
+                    if (submit()) d.dismiss();
+                }));
+            }
             dialog = d;
             Widgets.showStyled(d);
         }
 
         /**
-         * The long anonymous label stacks the buttons, and Android then gives the form all the height and Cancel only
-         * a peek. The button bar's minimum height is what Android reserves for it, so it's set to the bar's full height
-         * and the form scrolls instead. Hooked before the first layout (create() is safe to call twice).
+         * The form above its own buttons, with the GitHub-account way to send centered under them. The dialog's own
+         * button bar can't do this: Android sizes only its own panels and drops anything added next to them. The form
+         * takes what height is left, so the buttons and the link always show.
          */
-        private void keepButtonsWhole(android.app.AlertDialog d) {
-            d.create();
-            int id = a.getResources().getIdentifier("buttonPanel", "id", "android");
-            android.view.View bp = id != 0 ? d.findViewById(id) : null;
-            if (!(bp instanceof android.view.ViewGroup)) return;
-            bp.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
-                android.view.View bar = ((android.view.ViewGroup) v).getChildAt(0);
-                int h = bar == null ? 0 : bar.getMeasuredHeight() + v.getPaddingTop() + v.getPaddingBottom();
-                if (h > v.getMinimumHeight()) v.post(() -> v.setMinimumHeight(h));
+        private android.view.View anonFooter(android.widget.ScrollView form) {
+            android.widget.LinearLayout col = new android.widget.LinearLayout(a);
+            col.setOrientation(android.widget.LinearLayout.VERTICAL);
+            col.addView(form, new android.widget.LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            android.widget.LinearLayout row = new android.widget.LinearLayout(a);
+            row.setGravity(android.view.Gravity.END);
+            row.setPadding(dp(16), dp(10), dp(16), 0);
+            cancelBtn = new android.widget.Button(a);
+            cancelBtn.setText("Cancel");
+            sendBtn = new android.widget.Button(a);
+            sendBtn.setText("Send Anonymous Report");
+            row.addView(cancelBtn);
+            row.addView(sendBtn);
+            Widgets.styleButton(cancelBtn, false);
+            Widgets.styleButton(sendBtn, true);
+            col.addView(row, new android.widget.LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
+            githubLink = text(14, Widgets.BLUE);
+            githubLink.setText("Send with my own GitHub account instead ›");
+            githubLink.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+            githubLink.setPadding(dp(20), dp(4), dp(20), dp(16));
+            githubLink.setOnClickListener(v -> {
+                anon = false;
+                if (submit()) dialog.dismiss();
             });
+            col.addView(githubLink);
+            return col;
         }
 
         /**
@@ -1016,9 +1033,10 @@ final class DeviceReport {
 
         /** Off while a send runs, so it can't go twice or be closed before the result shows. */
         private void enableButtons(boolean on) {
-            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setEnabled(on);
-            dialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE).setEnabled(on);
-            if (githubLink != null) githubLink.setEnabled(on);
+            for (android.view.View v : new android.view.View[]{sendBtn, cancelBtn, githubLink}) {
+                v.setEnabled(on);
+                v.setAlpha(on ? 1f : 0.5f);
+            }
             dialog.setCancelable(on);
         }
 

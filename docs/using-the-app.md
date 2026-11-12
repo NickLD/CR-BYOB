@@ -319,7 +319,7 @@ Downloads for you to attach. *Export log* under
 `RAW LOG` makes the same file at any time. Serial numbers, Wi-Fi names, passwords and addresses are removed
 from both.
 
-The report dialog has two ways to send it. **Send Anonymous Report Without GitHub** posts the report through
+The report dialog has two ways to send it. **Send Anonymous Report** posts the report through
 the project's report server, which files it as a public GitHub issue labelled `device report` and `anonymous`,
 authored by a bot. With *Include the log* on, it carries as much of the recent log as GitHub allows (no zip, no
 digest). **Send with my own GitHub account instead** opens the pre-filled GitHub form as described above.

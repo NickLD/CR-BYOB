@@ -11,7 +11,7 @@ when tagging. A release build fails if its version has no dated section here.
 ## [Unreleased]
 
 ### Added
-- Device reports can be sent without a GitHub account: *Send Anonymous Report Without GitHub*.
+- Device reports can be sent without a GitHub account: *Send Anonymous Report*.
 - Developer replies to your anonymous reports show up on the dashboard, and you can answer them in the app.
 
 ## [0.2.9] - 2026-11-10
