@@ -595,7 +595,7 @@ final class DeviceReport {
         private android.widget.CheckBox includeLog;
         private LogFiles.Saved saved;                // the log archive saved for this report, null = none
         private android.widget.ScrollView scroll;
-        private boolean tried;                       // Continue was tapped once: missing fields show in red
+        private boolean tried;                       // a send was tapped once: the "Still needed" line shows
         private android.app.AlertDialog dialog;
         private android.widget.TextView githubLink;   // "Send Report with my own GitHub account instead", null when anon is off
         private android.widget.Button sendBtn, cancelBtn;   // the anonymous dialog's own buttons, null when anon is off
@@ -639,7 +639,7 @@ final class DeviceReport {
             e.addTextChangedListener(new android.text.TextWatcher() {
                 @Override public void beforeTextChanged(CharSequence x, int a1, int b1, int c1) { }
                 @Override public void onTextChanged(CharSequence x, int a1, int b1, int c1) { }
-                @Override public void afterTextChanged(android.text.Editable x) { if (tried) check(); }
+                @Override public void afterTextChanged(android.text.Editable x) { check(); }
             });
             if (multi) {
                 e.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
@@ -687,7 +687,7 @@ final class DeviceReport {
             t.setTag(set ? value : "");
             t.setText(set ? value + "  \u25BE" : "Choose\u2026  \u25BE");
             t.setTextColor(set ? Widgets.TEXT : Widgets.GREY);
-            if (tried) check();
+            check();
         }
 
         /** A small note line under a field (hidden until set). */
@@ -749,7 +749,7 @@ final class DeviceReport {
             details = field(notesOf(f.details), "What you did, what worked, what didn't", true);
             details.setMinLines(4);
             includeLog = new android.widget.CheckBox(a);
-            includeLog.setText("Include the log");
+            includeLog.setText("Include anonymous & redacted logs");
             includeLog.setTextColor(Widgets.TEXT);
             includeLog.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15);
             includeLog.setButtonTintList(android.content.res.ColorStateList.valueOf(Widgets.BLUE));
@@ -761,7 +761,7 @@ final class DeviceReport {
             // one line; the digest/zip details show in the digest view and when a browser opens the form
             android.widget.TextView logNote = text(13, Widgets.SUB);
             android.text.SpannableStringBuilder ln = new android.text.SpannableStringBuilder(
-                    "Recent log lines, private details removed. It helps most when something doesn't work. ");
+                    "Recent lines only. It helps most when something doesn't work. ");
             appendLink(ln, "See it \u203A", this::showDigest);
             logNote.setText(ln);
             logNote.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
@@ -783,6 +783,7 @@ final class DeviceReport {
             error.setPadding(0, dp(8), 0, 0);
             error.setVisibility(android.view.View.GONE);
             body.addView(error);
+            check();                                   // required fields that are empty show red from the start
 
             android.widget.ScrollView sv = new android.widget.ScrollView(a);
             sv.addView(body);
@@ -1086,7 +1087,7 @@ final class DeviceReport {
 
         /**
          * Copies the dialog into the fields and outlines every required one that's still empty in red; the line
-         * at the bottom lists them. Returns the first missing field's view, or null when the report is complete.
+         * at the bottom lists them once a send was tapped. Returns the first missing field's view, or null when the report is complete.
          */
         private android.view.View check() {
             if (title == null || network == null || result == null || details == null || error == null) return null;
@@ -1112,7 +1113,7 @@ final class DeviceReport {
                 }
             }
             error.setText(missing.isEmpty() ? "" : "Still needed: " + String.join(", ", missing));
-            error.setVisibility(missing.isEmpty() ? android.view.View.GONE : android.view.View.VISIBLE);
+            error.setVisibility(missing.isEmpty() || !tried ? android.view.View.GONE : android.view.View.VISIBLE);
             return first;
         }
     }
