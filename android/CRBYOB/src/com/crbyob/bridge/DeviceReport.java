@@ -768,15 +768,9 @@ final class DeviceReport {
             body.addView(logNote);
             includeLog.setOnCheckedChangeListener((v, on) -> logNote.setAlpha(on ? 1f : 0.5f));
             if (!f.includeLog) logNote.setAlpha(0.5f);
-            android.widget.TextView privacy = text(13, Widgets.SUB);
-            android.text.SpannableStringBuilder pv = new android.text.SpannableStringBuilder(
-                    "Public on GitHub. Never includes serial numbers, Wi-Fi names, passwords or addresses. ");
-            appendLink(pv, "More \u203A", () -> showText("What's in the report", "Never included: the scanner's serial "
-                    + "number, Wi-Fi network names, passwords, and MAC and IP addresses. The report is public on GitHub."
-                    + (AnonReports.enabled() ? " So are any replies. An anonymous report also carries a tag that "
-                    + "links it to other reports from this phone." : "")));
-            privacy.setText(pv);
-            privacy.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
+            android.widget.TextView privacy = text(13, Widgets.AMBER);
+            privacy.setText("This report will be visible publicly on CR-BYOB's GitHub page. Do not include information "
+                    + "you don't want to share.");
             privacy.setPadding(0, dp(12), 0, 0);
             body.addView(privacy);
             error = text(14, Widgets.RED);
