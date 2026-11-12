@@ -43,6 +43,9 @@ public class AnonReportsTest {
         assertTrue(AnonReports.isDeveloper(comment(1, "NONE", "some-bot[bot]", "Bot", "hi"), BOT, TAG));
         assertFalse(AnonReports.isDeveloper(comment(1, "NONE", "stranger", "User", "hi"), BOT, TAG));
         assertFalse(AnonReports.isDeveloper(comment(1, "NONE", BOT, "Bot", ownBody(TAG)), BOT, TAG));
+        // a reporter reply posted by a bot never counts, whatever its tag or bot login
+        assertFalse(AnonReports.isDeveloper(comment(1, "NONE", BOT, "Bot", ownBody("0".repeat(32))), BOT, TAG));
+        assertFalse(AnonReports.isDeveloper(comment(1, "NONE", "other-bot[bot]", "Bot", ownBody(TAG)), BOT, TAG));
     }
 
     @Test public void isMine_needsBotLogin() throws Exception {
@@ -90,8 +93,27 @@ public class AnonReportsTest {
     }
 
     @Test public void errorMessage_texts() {
-        assertEquals("Couldn't reach the report server. Check the connection and try again.", AnonReports.errorMessage(0));
-        assertEquals("Too many reports from this network just now. Try again in a minute.", AnonReports.errorMessage(429));
-        assertEquals("The report server answered 502. Try again later.", AnonReports.errorMessage(502));
+        assertEquals("Couldn't reach the report server. Check the connection and try again.", AnonReports.errorMessage(0, null));
+        assertEquals("Too many reports from this network just now. Try again in a minute.", AnonReports.errorMessage(429, null));
+        assertEquals("The report server answered 502. Try again later.", AnonReports.errorMessage(502, null));
+    }
+
+    @Test public void errorMessage_400and403AreFinalAndCarryTheServerText() {
+        assertEquals("The report server turned this down (403: not your report). Sending the same again won't help.",
+                AnonReports.errorMessage(403, "not your report"));
+        assertEquals("The report server turned this down (400). Sending the same again won't help.",
+                AnonReports.errorMessage(400, null));
+        assertEquals("The report server turned this down (400: body is too long). Sending the same again won't help.",
+                AnonReports.errorMessage(new AnonReports.HttpError(400, "HTTP 400", "body is too long")));
+        assertEquals(AnonReports.errorMessage(0, null), AnonReports.errorMessage(new java.io.IOException("x")));
+    }
+
+    @Test public void onlyUnread_numberWhenExactlyOne() throws Exception {
+        JSONObject a = report(0, 0).put("n", 4), b = report(0, 0).put("n", 7);
+        assertEquals(0, AnonReports.onlyUnread(new JSONArray().put(a).put(b)));
+        b.put("unread", true);
+        assertEquals(7, AnonReports.onlyUnread(new JSONArray().put(a).put(b)));
+        a.put("unread", true);
+        assertEquals(0, AnonReports.onlyUnread(new JSONArray().put(a).put(b)));
     }
 }

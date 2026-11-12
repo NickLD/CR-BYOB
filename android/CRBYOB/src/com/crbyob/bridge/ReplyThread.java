@@ -251,18 +251,21 @@ final class ReplyThread {
         error.setVisibility(View.GONE);
         new Thread(() -> {
             int code = -1;
+            String msg = null;
             try {
                 AnonReports.reply(a, issue, text);
             } catch (IOException e) {
                 code = e instanceof AnonReports.HttpError ? ((AnonReports.HttpError) e).code : 0;
+                msg = AnonReports.errorMessage(e);
             }
             int c = code;
+            String m = msg;
             a.runOnUiThread(() -> {
                 if (a.isFinishing() || a.isDestroyed() || !dialog.isShowing()) return;
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
                 if (c >= 0) {
                     BLog.log("anon_reply_failed", "code", c);
-                    error.setText(AnonReports.errorMessage(c));
+                    error.setText(m);
                     error.setVisibility(View.VISIBLE);
                     scroll.post(() -> scroll.smoothScrollTo(0, error.getBottom()));
                     return;

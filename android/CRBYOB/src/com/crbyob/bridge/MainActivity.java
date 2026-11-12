@@ -1227,7 +1227,11 @@ public final class MainActivity extends Activity {
         TextView title = text(16, TEXT, true);
         title.setText("The developer replied to your report ›");
         replyCard.addView(title);
-        replyCard.setOnClickListener(v -> ReplyThread.openList(this, this::refreshReplies));
+        replyCard.setOnClickListener(v -> {           // one unread report: straight to its thread
+            int one = AnonReports.onlyUnread(AnonReports.reports(getSharedPreferences("bridge", MODE_PRIVATE)));
+            if (one > 0) ReplyThread.open(this, one, this::refreshReplies);
+            else ReplyThread.openList(this, this::refreshReplies);
+        });
         replyCard.setVisibility(View.GONE);
     }
 

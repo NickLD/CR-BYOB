@@ -972,19 +972,22 @@ final class DeviceReport {
             new Thread(() -> {
                 AnonReports.Sent s = null;
                 int code = 0;
+                String msg = null;
                 try {
                     s = AnonReports.send(a, issueTitle, report);
                 } catch (java.io.IOException e) {
                     code = e instanceof AnonReports.HttpError ? ((AnonReports.HttpError) e).code : 0;
+                    msg = AnonReports.errorMessage(e);
                 }
                 AnonReports.Sent sent = s;
                 int c = code;
+                String m = msg;
                 a.runOnUiThread(() -> {
                     if (a.isFinishing() || a.isDestroyed()) return;
                     if (sent == null) {
                         BLog.log("anon_report_failed", "code", c);
                         enableButtons(true);
-                        error.setText(AnonReports.errorMessage(c));
+                        error.setText(m);
                         error.setVisibility(android.view.View.VISIBLE);
                         scroll.post(() -> scroll.smoothScrollTo(0, error.getBottom()));
                         return;

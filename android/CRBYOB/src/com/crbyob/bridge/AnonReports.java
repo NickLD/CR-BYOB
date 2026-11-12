@@ -28,10 +28,12 @@ final class AnonReports {
 
     static final class Sent { int number; String url; }
 
-    /** code 0 = no connection or timeout, otherwise the HTTP status. */
+    /** code 0 = no connection or timeout, otherwise the HTTP status; serverError = the Worker's {error}, or null. */
     static final class HttpError extends IOException {
         final int code;
-        HttpError(int code, String msg) { super(msg); this.code = code; }
+        final String serverError;
+        HttpError(int code, String msg) { this(code, msg, null); }
+        HttpError(int code, String msg, String serverError) { super(msg); this.code = code; this.serverError = serverError; }
     }
 
     private static final String K_ID = "anon_id", K_BOT = "anon_bot", K_REPORTS = "anon_reports",
@@ -78,16 +80,25 @@ final class AnonReports {
     }
 
     static boolean isDeveloper(JSONObject comment, String bot, String tag) {
-        if (isMine(comment, bot, tag)) return false;
         String a = comment.optString("author_association");
         JSONObject u = comment.optJSONObject("user");
-        return a.equals("OWNER") || a.equals("MEMBER") || a.equals("COLLABORATOR")
-                || (u != null && "Bot".equals(u.optString("type")));
+        boolean isBot = u != null && "Bot".equals(u.optString("type"));
+        // a reporter's reply (this phone's or, with any tag, posted by the bot) is never the developer's
+        if (isMine(comment, bot, tag) || (isBot && comment.optString("body").startsWith("**Reply from the reporter**")))
+            return false;
+        return a.equals("OWNER") || a.equals("MEMBER") || a.equals("COLLABORATOR") || isBot;
     }
 
-    static String errorMessage(int httpCode) {
+    static String errorMessage(IOException e) {
+        return e instanceof HttpError ? errorMessage(((HttpError) e).code, ((HttpError) e).serverError) : errorMessage(0, null);
+    }
+
+    static String errorMessage(int httpCode, String serverError) {
         if (httpCode == 0) return "Couldn't reach the report server. Check the connection and try again.";
         if (httpCode == 429) return "Too many reports from this network just now. Try again in a minute.";
+        if (httpCode == 400 || httpCode == 403)          // permanent: the same request gets the same answer
+            return "The report server turned this down (" + httpCode + (serverError != null ? ": " + serverError : "")
+                    + "). Sending the same again won't help.";
         return "The report server answered " + httpCode + ". Try again later.";
     }
 
@@ -106,6 +117,24 @@ final class AnonReports {
     static boolean anyUnread(SharedPreferences p) {
         JSONArray a = reports(p);
         for (int i = 0; i < a.length(); i++) if (a.optJSONObject(i) != null && a.optJSONObject(i).optBoolean("unread")) return true;
+        return false;
+    }
+
+    /** The issue number when exactly one report is unread, else 0. */
+    static int onlyUnread(JSONArray a) {
+        int n = 0;
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject r = a.optJSONObject(i);
+            if (r == null || !r.optBoolean("unread")) continue;
+            if (n != 0) return 0;
+            n = r.optInt("n");
+        }
+        return n;
+    }
+
+    private static boolean anyOpen(SharedPreferences p) {
+        JSONArray a = reports(p);
+        for (int i = 0; i < a.length(); i++) if (a.optJSONObject(i) != null && !a.optJSONObject(i).optBoolean("closed")) return true;
         return false;
     }
 
@@ -155,7 +184,7 @@ final class AnonReports {
                         .put("closed", false).put("unread", false));
                 p.edit().putString(K_BOT, r.optString("bot")).putString(K_REPORTS, all.toString()).apply();
             }
-            BLog.log("anon_report_sent", "issue", s.number);
+            BLog.log("anon_report_sent");   // no issue number: a later log on a GitHub-account report would link the two
             return s;
         } catch (JSONException e) {
             throw new HttpError(502, "bad answer from the report server");
@@ -166,7 +195,7 @@ final class AnonReports {
         try {
             http(BuildConfig.REPORT_WORKER_URL + "/reply",
                     new JSONObject().put("id", deviceId(prefs(c))).put("issue", issue).put("body", text).toString(), false);
-            BLog.log("anon_reply_sent", "issue", issue);
+            BLog.log("anon_reply_sent");
         } catch (JSONException e) {
             throw new HttpError(502, "bad request body");
         }
@@ -203,12 +232,9 @@ final class AnonReports {
                 try (OutputStream o = c.getOutputStream()) { o.write(json.getBytes(StandardCharsets.UTF_8)); }
             }
             int code = c.getResponseCode();
-            if (code / 100 != 2) throw new HttpError(code, "HTTP " + code);
+            if (code / 100 != 2) throw new HttpError(code, "HTTP " + code, serverError(c));
             try (InputStream in = c.getInputStream()) {
-                ByteArrayOutputStream bo = new ByteArrayOutputStream();
-                byte[] buf = new byte[16384];
-                for (int n; (n = in.read(buf)) > 0; ) bo.write(buf, 0, n);
-                return new String(bo.toByteArray(), StandardCharsets.UTF_8);
+                return readAll(in);
             }
         } catch (HttpError e) {
             throw e;
@@ -219,10 +245,26 @@ final class AnonReports {
         }
     }
 
+    private static String readAll(InputStream in) throws IOException {
+        ByteArrayOutputStream bo = new ByteArrayOutputStream();
+        byte[] buf = new byte[16384];
+        for (int n; (n = in.read(buf)) > 0; ) bo.write(buf, 0, n);
+        return new String(bo.toByteArray(), StandardCharsets.UTF_8);
+    }
+
+    /** The {error} text of the Worker's JSON error answer, or null. */
+    private static String serverError(HttpURLConnection c) {
+        try (InputStream in = c.getErrorStream()) {
+            return in == null ? null : new JSONObject(readAll(in)).optString("error", null);
+        } catch (IOException | JSONException e) {
+            return null;
+        }
+    }
+
     /** At most every 15 minutes, if the setting is on; calls onChanged on the UI thread when a report changed. */
     static void maybeCheck(Activity a, Runnable onChanged) {
         SharedPreferences p = prefs(a);
-        if (!enabled() || !p.getBoolean(K_CHECK, true)
+        if (!enabled() || !p.getBoolean(K_CHECK, true) || !anyOpen(p)    // none open: don't create the ID
                 || System.currentTimeMillis() - p.getLong(K_LAST, 0) < CHECK_INTERVAL_MS) return;
         p.edit().putLong(K_LAST, System.currentTimeMillis()).apply();
         new Thread(() -> {
@@ -245,7 +287,7 @@ final class AnonReports {
                     }
                     if (applyIssue(r, code, issue)) applyComments(r, comments(n), bot, tag);
                 } catch (IOException | JSONException e) {
-                    BLog.log("anon_check_failed", "issue", n, "err", String.valueOf(e));
+                    BLog.log("anon_check_failed", "err", String.valueOf(e));
                 }
                 if (!r.toString().equals(was)) changed.add(r);
             }
