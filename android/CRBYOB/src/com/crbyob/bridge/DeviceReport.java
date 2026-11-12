@@ -599,6 +599,7 @@ final class DeviceReport {
         private android.app.AlertDialog dialog;
         private android.widget.TextView githubLink;   // "Send Report with my own GitHub account instead", null when anon is off
         private android.widget.Button sendBtn, cancelBtn;   // the anonymous dialog's own buttons, null when anon is off
+        private android.widget.LinearLayout sending;          // spinner + "Sending…", shown in the link's place
         private boolean anon;                        // this submit goes to the report Worker, not the GitHub form
 
         Review(Activity a, Fields f) {
@@ -839,6 +840,19 @@ final class DeviceReport {
                 if (submit()) dialog.dismiss();
             });
             col.addView(githubLink);
+            // takes the link's place while a send runs (a few seconds): spinner and "Sending…"
+            sending = new android.widget.LinearLayout(a);
+            sending.setGravity(android.view.Gravity.CENTER);
+            sending.setPadding(dp(20), dp(4), dp(20), dp(16));
+            android.widget.ProgressBar spin = new android.widget.ProgressBar(a, null, android.R.attr.progressBarStyleSmall);
+            spin.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Widgets.BLUE));
+            sending.addView(spin);
+            android.widget.TextView st = text(14, Widgets.SUB);
+            st.setText("Sending…");
+            st.setPadding(dp(8), 0, 0, 0);
+            sending.addView(st);
+            sending.setVisibility(android.view.View.GONE);
+            col.addView(sending);
             return col;
         }
 
@@ -994,19 +1008,25 @@ final class DeviceReport {
                     draft = null;
                     dialog.dismiss();
                     if (a instanceof MainActivity) ((MainActivity) a).refreshReplies();   // a dialog: no onResume follows
+                    android.text.SpannableStringBuilder msg2 = new android.text.SpannableStringBuilder("Report sent as: ");
+                    appendLink(msg2, sent.url.replaceFirst("^https?://", ""), () -> {
+                        try {
+                            a.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
+                                    android.net.Uri.parse(sent.url)));
+                        } catch (android.content.ActivityNotFoundException e) {
+                            android.widget.Toast.makeText(a, "No app can open GitHub links",
+                                    android.widget.Toast.LENGTH_LONG).show();
+                        }
+                    });
+                    msg2.append("\n\nReplies will show on the dashboard.");
+                    android.widget.TextView sentText = text(15, Widgets.TEXT);
+                    sentText.setText(msg2);
+                    sentText.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
+                    sentText.setPadding(dp(24), dp(8), dp(24), dp(4));
                     android.app.AlertDialog d = new android.app.AlertDialog.Builder(a)
                             .setTitle("Report sent")
-                            .setMessage("Replies will show on the dashboard.")
-                            .setPositiveButton("See it on GitHub", (x, w) -> {
-                                try {
-                                    a.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
-                                            android.net.Uri.parse(sent.url)));
-                                } catch (android.content.ActivityNotFoundException e) {
-                                    android.widget.Toast.makeText(a, "No app can open GitHub links",
-                                            android.widget.Toast.LENGTH_LONG).show();
-                                }
-                            })
-                            .setNegativeButton("OK", null)
+                            .setView(sentText)
+                            .setPositiveButton("OK", null)
                             .create();
                     Widgets.showStyled(d);
                 });
@@ -1015,10 +1035,12 @@ final class DeviceReport {
 
         /** Off while a send runs, so it can't go twice or be closed before the result shows. */
         private void enableButtons(boolean on) {
-            for (android.view.View v : new android.view.View[]{sendBtn, cancelBtn, githubLink}) {
+            for (android.view.View v : new android.view.View[]{sendBtn, cancelBtn}) {
                 v.setEnabled(on);
                 v.setAlpha(on ? 1f : 0.5f);
             }
+            githubLink.setVisibility(on ? android.view.View.VISIBLE : android.view.View.GONE);
+            sending.setVisibility(on ? android.view.View.GONE : android.view.View.VISIBLE);
             dialog.setCancelable(on);
         }
 
