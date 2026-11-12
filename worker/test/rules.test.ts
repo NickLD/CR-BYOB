@@ -20,8 +20,8 @@ test('parseReport', () => {
   assert.deepEqual(parseReport({ id: ID, title: '[Device] Otter on Pixel', body }), { title: '[Device] Otter on Pixel', body });
   assert.deepEqual(parseReport({ id: ID, title: 'Otter on Pixel', body }), { title: '[Device] Otter on Pixel', body });
   assert.equal(typeof parseReport({ title: 'x', body: 'nope' }), 'string');
-  assert.equal(typeof parseReport({ title: 'x', body: '### Scanner' + 'a'.repeat(60_000 - 10) }), 'object');
-  assert.equal(typeof parseReport({ title: 'x', body: '### Scanner' + 'a'.repeat(60_001) }), 'string');
+  assert.equal(typeof parseReport({ title: 'x', body: '### Scanner' + 'a'.repeat(60_000 - 11) }), 'object');
+  assert.equal(typeof parseReport({ title: 'x', body: '### Scanner' + 'a'.repeat(60_000 - 10) }), 'string');
   assert.equal(typeof parseReport({ title: 'a'.repeat(257), body }), 'string');
   assert.equal(typeof parseReport({ title: '', body }), 'string');
   assert.equal(typeof parseReport(null), 'string');
