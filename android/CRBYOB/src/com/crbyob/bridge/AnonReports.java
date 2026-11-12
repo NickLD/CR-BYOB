@@ -36,6 +36,8 @@ final class AnonReports {
 
     private static final String K_ID = "anon_id", K_BOT = "anon_bot", K_REPORTS = "anon_reports",
             K_CHECK = "anon_check_replies", K_LAST = "anon_last_check";
+    /** Held around every read-modify-write of anon_reports (the background check merges under it too). */
+    static final Object LOCK = new Object();
     private static final long CHECK_INTERVAL_MS = 15L * 60 * 1000;
 
     static boolean enabled() { return !BuildConfig.REPORT_WORKER_URL.isEmpty(); }
@@ -109,7 +111,7 @@ final class AnonReports {
 
     static boolean applyIssue(JSONObject report, int httpCode, JSONObject issue) {
         try {
-            if (httpCode == 404 || httpCode == 410 || httpCode == 403
+            if (httpCode == 404 || httpCode == 410 // 403 is GitHub's rate limit, not a deleted issue
                     || (issue != null && "closed".equals(issue.optString("state")))) report.put("closed", true);
             return issue != null && issue.optInt("comments") > report.optInt("seen");
         } catch (JSONException e) {
@@ -147,14 +149,16 @@ final class AnonReports {
             Sent s = new Sent();
             s.number = r.getInt("number");
             s.url = r.getString("url");
-            JSONArray all = reports(p);
-            all.put(new JSONObject().put("n", s.number).put("seen", 0).put("dev", 0).put("newest", 0)
-                    .put("closed", false).put("unread", false));
-            p.edit().putString(K_BOT, r.optString("bot")).putString(K_REPORTS, all.toString()).apply();
+            synchronized (LOCK) {
+                JSONArray all = reports(p);
+                all.put(new JSONObject().put("n", s.number).put("seen", 0).put("dev", 0).put("newest", 0)
+                        .put("closed", false).put("unread", false));
+                p.edit().putString(K_BOT, r.optString("bot")).putString(K_REPORTS, all.toString()).apply();
+            }
             BLog.log("anon_report_sent", "issue", s.number);
             return s;
         } catch (JSONException e) {
-            throw new IOException("bad answer from the report server", e);
+            throw new HttpError(502, "bad answer from the report server");
         }
     }
 
@@ -164,15 +168,16 @@ final class AnonReports {
                     new JSONObject().put("id", deviceId(prefs(c))).put("issue", issue).put("body", text).toString(), false);
             BLog.log("anon_reply_sent", "issue", issue);
         } catch (JSONException e) {
-            throw new IOException(e);
+            throw new HttpError(502, "bad request body");
         }
     }
 
+    // shortcut: first 100 comments only, page if a report thread ever gets that long
     static JSONArray comments(int issue) throws IOException {
         try {
             return new JSONArray(http(issueUrl(issue) + "/comments?per_page=100", null, true));
         } catch (JSONException e) {
-            throw new IOException("bad answer from GitHub", e);
+            throw new HttpError(502, "bad answer from GitHub");
         }
     }
 
@@ -221,29 +226,49 @@ final class AnonReports {
                 || System.currentTimeMillis() - p.getLong(K_LAST, 0) < CHECK_INTERVAL_MS) return;
         p.edit().putLong(K_LAST, System.currentTimeMillis()).apply();
         new Thread(() -> {
-            String before = p.getString(K_REPORTS, "[]");
             JSONArray all = reports(p);
+            java.util.List<JSONObject> changed = new java.util.ArrayList<>();
             String bot = p.getString(K_BOT, null), tag = tagOf(deviceId(p));
             for (int i = 0; i < all.length(); i++) {
                 JSONObject r = all.optJSONObject(i);
                 if (r == null || r.optBoolean("closed")) continue;
                 int n = r.optInt("n");
+                String was = r.toString();
                 try {
                     int code = 200;
                     JSONObject issue = null;
                     try {
                         issue = new JSONObject(http(issueUrl(n), null, true));
                     } catch (HttpError e) {
-                        if (e.code == 0 || e.code >= 500 || e.code == 429) throw e; // transient: retry next time
+                        if (e.code != 404 && e.code != 410) throw e; // transient (incl. 403 rate limit): retry next time
                         code = e.code;
                     }
                     if (applyIssue(r, code, issue)) applyComments(r, comments(n), bot, tag);
                 } catch (IOException | JSONException e) {
                     BLog.log("anon_check_failed", "issue", n, "err", String.valueOf(e));
                 }
+                if (!r.toString().equals(was)) changed.add(r);
             }
-            if (all.toString().equals(before)) return;
-            saveReports(p, all);
+            if (changed.isEmpty()) return;
+            // merge into a fresh read: the UI may have sent or marked a report read during the network calls
+            synchronized (LOCK) {
+                JSONArray fresh = reports(p);
+                boolean any = false;
+                for (int i = 0; i < fresh.length(); i++) {
+                    JSONObject f = fresh.optJSONObject(i);
+                    for (JSONObject r : changed) {
+                        if (f == null || f.optInt("n") != r.optInt("n")) continue;
+                        try {
+                            f.put("seen", r.optInt("seen")).put("newest", r.optLong("newest"))
+                                    .put("closed", f.optBoolean("closed") || r.optBoolean("closed"))
+                                    .put("unread", r.optLong("newest") > f.optLong("dev"));
+                            any = true;
+                        } catch (JSONException ignored) { }
+                    }
+                }
+                if (!any) return;
+                saveReports(p, fresh);
+            }
             a.runOnUiThread(onChanged);
         }, "anon-check").start();
     }

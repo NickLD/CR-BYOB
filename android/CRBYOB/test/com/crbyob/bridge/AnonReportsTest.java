@@ -57,6 +57,15 @@ public class AnonReportsTest {
         assertTrue(r.getBoolean("closed"));
     }
 
+    @Test public void applyIssue_410ClosesButRateLimit403DoesNot() throws Exception {
+        JSONObject gone = report(1, 0);
+        AnonReports.applyIssue(gone, 410, null);
+        assertTrue(gone.getBoolean("closed"));
+        JSONObject limited = report(1, 0);
+        assertFalse(AnonReports.applyIssue(limited, 403, null));
+        assertFalse(limited.getBoolean("closed"));
+    }
+
     @Test public void applyIssue_commentCount() throws Exception {
         JSONObject open = new JSONObject().put("state", "open").put("comments", 3);
         assertTrue(AnonReports.applyIssue(report(1, 0), 200, open));
