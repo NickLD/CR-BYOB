@@ -278,6 +278,7 @@ public final class MainActivity extends Activity {
 
         buildHeader(root);
         buildReportPrompt(root);
+        buildReplyCard(root);
         buildCrashPrompt(root);
         buildActivity(root);
         root.removeView(linkCard);                                   // Link quality above Streams
@@ -990,6 +991,12 @@ public final class MainActivity extends Activity {
         rep.setPadding(0, dp(8), 0, dp(4));
         rep.setOnClickListener(x -> DeviceReport.open(this));
         root.addView(rep, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        yourReports = text(13, BLUE, false);
+        yourReports.setGravity(Gravity.CENTER_HORIZONTAL);
+        yourReports.setPadding(0, dp(4), 0, dp(4));
+        yourReports.setOnClickListener(x -> ReplyThread.openList(this, this::refreshReplies));
+        yourReports.setVisibility(View.GONE);
+        root.addView(yourReports, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         // Ko-fi button: GitHub builds only (null in the Play flavor).
         View donate = Donate.footerButton(this);
@@ -1206,6 +1213,32 @@ public final class MainActivity extends Activity {
         if (show) reportText.setText(ReportPrompt.message(missing));
         if (show && reportCard.getVisibility() != View.VISIBLE) BLog.log("report_prompt_shown", "missing", missing);
         show(reportCard, show);
+    }
+
+    // ------------------------------------------------------------------ replies to anonymous reports (AnonReports)
+    private LinearLayout replyCard;
+    private TextView yourReports;          // footer: "Your reports (N)"
+
+    private void buildReplyCard(LinearLayout root) {
+        replyCard = card(root, null);
+        android.graphics.drawable.GradientDrawable bg = rounded(CARD, dp(16));
+        bg.setStroke(Math.max(1, dp(1.5f)), (BLUE & 0x00FFFFFF) | 0x99000000);
+        replyCard.setBackground(bg);
+        TextView title = text(16, TEXT, true);
+        title.setText("The developer replied to your report ›");
+        replyCard.addView(title);
+        replyCard.setOnClickListener(v -> ReplyThread.openList(this, this::refreshReplies));
+        replyCard.setVisibility(View.GONE);
+    }
+
+    private void refreshReplies() {
+        if (replyCard == null) return;
+        android.content.SharedPreferences p = getSharedPreferences("bridge", MODE_PRIVATE);
+        boolean on = AnonReports.enabled();
+        int n = on ? AnonReports.reports(p).length() : 0;
+        show(replyCard, on && AnonReports.anyUnread(p));
+        yourReports.setText("Your reports (" + n + ") ›");
+        show(yourReports, n > 0);
     }
 
     // ------------------------------------------------------------------ "CR-BYOB stopped unexpectedly" (crash card)
@@ -1451,6 +1484,8 @@ public final class MainActivity extends Activity {
         h.post(tick);
         if (ssBusy()) h.post(ssPoll);
         if (BridgeService.current() == null) uiWatch.start();   // readiness for the Mirror button even with the bridge off
+        refreshReplies();
+        if (AnonReports.enabled()) AnonReports.maybeCheck(this, this::refreshReplies);
     }
 
     @Override
