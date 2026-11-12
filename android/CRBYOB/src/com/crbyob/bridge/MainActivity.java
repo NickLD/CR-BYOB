@@ -1217,16 +1217,23 @@ public final class MainActivity extends Activity {
 
     // ------------------------------------------------------------------ replies to anonymous reports (AnonReports)
     private LinearLayout replyCard;
-    private TextView yourReports;          // footer: "Your reports (N)"
+    private TextView replyTitle;
+    private android.animation.ValueAnimator replyPulse;   // the card's outline fading in and out while it shows
+    private TextView yourReports;          // footer: "View your N submitted device reports"
 
     private void buildReplyCard(LinearLayout root) {
         replyCard = card(root, null);
         android.graphics.drawable.GradientDrawable bg = rounded(CARD, dp(16));
-        bg.setStroke(Math.max(1, dp(1.5f)), (BLUE & 0x00FFFFFF) | 0x99000000);
+        int stroke = Math.max(1, dp(2));
+        bg.setStroke(stroke, BLUE);
         replyCard.setBackground(bg);
-        TextView title = text(16, TEXT, true);
-        title.setText("The developer replied to your report ›");
-        replyCard.addView(title);
+        replyPulse = android.animation.ValueAnimator.ofInt(0x22, 0xFF);
+        replyPulse.setDuration(1100);
+        replyPulse.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+        replyPulse.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+        replyPulse.addUpdateListener(an -> bg.setStroke(stroke, (BLUE & 0x00FFFFFF) | ((int) an.getAnimatedValue() << 24)));
+        replyTitle = text(16, TEXT, true);
+        replyCard.addView(replyTitle);
         replyCard.setOnClickListener(v -> {           // one unread report: straight to its thread
             int one = AnonReports.onlyUnread(AnonReports.reports(getSharedPreferences("bridge", MODE_PRIVATE)));
             if (one > 0) ReplyThread.open(this, one, this::refreshReplies);
@@ -1240,8 +1247,14 @@ public final class MainActivity extends Activity {
         android.content.SharedPreferences p = getSharedPreferences("bridge", MODE_PRIVATE);
         boolean on = AnonReports.enabled();
         int n = on ? AnonReports.reports(p).length() : 0;
-        show(replyCard, on && AnonReports.anyUnread(p));
-        yourReports.setText("Your reports (" + n + ") ›");
+        boolean unread = on && AnonReports.anyUnread(p);
+        int one = unread ? AnonReports.onlyUnread(AnonReports.reports(p)) : 0;
+        replyTitle.setText(one > 0 ? "There is a reply on your report #" + one + " ›"
+                : "There are replies on your reports ›");
+        show(replyCard, unread);
+        if (unread && !replyPulse.isStarted()) replyPulse.start();
+        else if (!unread) replyPulse.cancel();
+        yourReports.setText("View your " + n + " submitted device report" + (n == 1 ? "" : "s") + " ›");
         show(yourReports, n > 0);
     }
 

@@ -27,6 +27,7 @@ final class ReplyThread {
     private final LinearLayout list;
     private final TextView status, error;
     private final EditText box;
+    private final LinearLayout sending;   // spinner + "Sending…" while a reply goes out
     private AlertDialog dialog;
     private ScrollView scroll;
 
@@ -67,6 +68,7 @@ final class ReplyThread {
         status = text(14, Widgets.SUB);
         error = text(14, Widgets.RED);
         box = new EditText(a);
+        sending = new LinearLayout(a);
     }
 
     private int dp(float v) {
@@ -116,6 +118,18 @@ final class ReplyThread {
         LinearLayout.LayoutParams blp = wide();
         blp.topMargin = dp(8);
         body.addView(box, blp);
+        // spinner + "Sending…" under the box while a reply goes out (a second or two)
+        sending.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        sending.setPadding(0, dp(8), 0, 0);
+        android.widget.ProgressBar spin = new android.widget.ProgressBar(a, null, android.R.attr.progressBarStyleSmall);
+        spin.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Widgets.BLUE));
+        sending.addView(spin);
+        TextView st = text(14, Widgets.SUB);
+        st.setText("Sending…");
+        st.setPadding(dp(8), 0, 0, 0);
+        sending.addView(st);
+        sending.setVisibility(View.GONE);
+        body.addView(sending);
         error.setPadding(0, dp(8), 0, 0);
         error.setVisibility(View.GONE);
         body.addView(error);
@@ -247,7 +261,7 @@ final class ReplyThread {
     private void send() {
         String text = box.getText().toString().trim();
         if (text.isEmpty()) return;
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
+        sendingState(true);
         error.setVisibility(View.GONE);
         new Thread(() -> {
             int code = -1;
@@ -262,7 +276,7 @@ final class ReplyThread {
             String m = msg;
             a.runOnUiThread(() -> {
                 if (a.isFinishing() || a.isDestroyed() || !dialog.isShowing()) return;
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
+                sendingState(false);
                 if (c >= 0) {
                     BLog.log("anon_reply_failed", "code", c);
                     error.setText(m);
@@ -274,5 +288,14 @@ final class ReplyThread {
                 load();
             });
         }, "anon-reply").start();
+    }
+
+    /** While a reply sends: Send and the box are off and dimmed, and the spinner shows. */
+    private void sendingState(boolean on) {
+        android.widget.Button send = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+        send.setEnabled(!on);
+        send.setAlpha(on ? 0.5f : 1f);
+        box.setEnabled(!on);
+        sending.setVisibility(on ? View.VISIBLE : View.GONE);
     }
 }

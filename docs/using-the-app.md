@@ -331,7 +331,7 @@ are never included. The server keeps no data and doesn't publish your IP address
 Replies: when the app opens or comes back to the foreground (at most every 15 minutes), it checks your
 anonymous reports on GitHub. If the developer, a maintainer or the project's bot replied, the dashboard shows
 "The developer replied to your report ›". The thread opens in the app, where you can answer, still
-anonymously. "Your reports (N) ›", under "Tried a scanner or phone? Send a device report ›" at the bottom of the
+anonymously. "View your N submitted device reports ›", under "Tried a scanner or phone? Send a device report ›" at the bottom of the
 dashboard, gets you back to older threads. The *Check for replies* switch, shown in every thread, is one setting
 for all your anonymous reports: turning it off in any thread stops the checks for all of them (on by default).
 Comments from other GitHub users aren't shown in the app; *Open on GitHub* shows everything. The checks stop
