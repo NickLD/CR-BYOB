@@ -1022,19 +1022,24 @@ final class DeviceReport {
             dialog.setCancelable(on);
         }
 
-        /** "See the digest": what a browser's Log field will get, with a placeholder file name. */
+        /**
+         * "See it": the log as the main send will carry it. Anonymous: the readable log, exactly as sent. Otherwise
+         * what a browser's Log field gets (the digest, with a placeholder file name for the zip).
+         */
         private void showDigest() {
             check();
             boolean was = f.includeLog;
             f.includeLog = true;
             LogFiles.Lines l = LogFiles.lines(a);
-            String d = logFor(BuildConfig.REPO_URL, f, false,
+            boolean anonSend = AnonReports.enabled();
+            String d = logFor(BuildConfig.REPO_URL, f, anonSend,
                     fullLogNote(LogExport.fileName(System.currentTimeMillis()), "Downloads"), l.pinned, l.recent);
             f.includeLog = was;
-            showText("Log digest", d.isEmpty() ? "Nothing to show yet: the log is empty, or the report leaves no room."
-                    : "In a browser the Log field gets this digest, and the whole log is saved to Downloads as a zip "
-                    + "to attach. " + (AnonReports.enabled() ? "Sent anonymously or in the GitHub app" : "In the GitHub app")
-                    + " it gets the recent log instead, as much as GitHub allows (around 500 lines).\n\n" + d);
+            if (d.isEmpty()) showText("Log", "Nothing to show yet: the log is empty, or the report leaves no room.");
+            else if (anonSend) showText("Log in this report", d);
+            else showText("Log digest", "In a browser the Log field gets this digest, and the whole log is saved to "
+                    + "Downloads as a zip to attach. In the GitHub app it gets the recent log instead, as much as GitHub "
+                    + "allows (around 500 lines).\n\n" + d);
         }
 
         /** A read-only text in its own scrolling dialog (selectable, so it can be copied). */
