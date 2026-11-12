@@ -596,7 +596,7 @@ final class DeviceReport {
         private android.widget.ScrollView scroll;
         private boolean tried;                       // Continue was tapped once: missing fields show in red
         private android.app.AlertDialog dialog;
-        private android.widget.TextView githubLink;   // "Send with my own GitHub account instead", null when anon is off
+        private android.widget.TextView githubLink;   // "Send Report with my own GitHub account instead", null when anon is off
         private android.widget.Button sendBtn, cancelBtn;   // the anonymous dialog's own buttons, null when anon is off
         private boolean anon;                        // this submit goes to the report Worker, not the GitHub form
 
@@ -727,7 +727,7 @@ final class DeviceReport {
             android.widget.TextView intro = text(14, Widgets.SUB);
             intro.setText("This is everything the report will contain. Add what you saw and fix anything that's off; "
                     + "the scanner, its firmware and the app details come straight from the scanner and this phone. "
-                    + (AnonReports.enabled() ? "Send Anonymous Report posts it straight to a public GitHub issue, no "
+                    + (AnonReports.enabled() ? "Send Anonymous Report files it as a public GitHub issue for you, no "
                     + "GitHub account needed." : "Continue opens it on GitHub, where you submit it."));
             body.addView(intro);
             label("Title", true);
@@ -766,9 +766,9 @@ final class DeviceReport {
             body.addView(includeLog, clp);
             android.widget.TextView logNote = text(13, Widgets.SUB);
             logNote.setText(AnonReports.enabled()
-                    ? "The log goes in the report's Log field. Sent anonymously, that's as much of the recent log as "
-                    + "GitHub allows. With your own GitHub account in a browser, it's a digest, and the whole log is saved "
-                    + "to Downloads as a zip for you to attach. It helps most when something doesn't work."
+                    ? "The log goes in the report's Log field: as much of the recent log as fits. Sent with your own "
+                    + "GitHub account from a browser, it gets a digest instead, and the whole log is saved to Downloads "
+                    + "as a zip for you to attach. It helps most when something doesn't work."
                     : "The log goes in the report's Log field. In a browser that's a digest, and the whole log "
                     + "is saved to Downloads as a zip for you to attach. It helps most when something doesn't work.");
             body.addView(logNote);
@@ -788,8 +788,8 @@ final class DeviceReport {
             android.widget.TextView privacy = text(13, Widgets.SUB);
             privacy.setText("Never included: the scanner's serial number, Wi-Fi network names, passwords, and MAC and IP "
                     + "addresses. The report is public on GitHub."
-                    + (AnonReports.enabled() ? " Sent anonymously, the report and any replies are still public, and "
-                    + "carry a tag that links reports from this phone." : ""));
+                    + (AnonReports.enabled() ? " So are any replies. An anonymous report also carries a tag that "
+                    + "links it to other reports from this phone." : ""));
             privacy.setPadding(0, dp(12), 0, 0);
             body.addView(privacy);
             error = text(14, Widgets.RED);
@@ -836,8 +836,8 @@ final class DeviceReport {
             col.addView(form, new android.widget.LinearLayout.LayoutParams(
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             android.widget.LinearLayout row = new android.widget.LinearLayout(a);
-            row.setGravity(android.view.Gravity.END);
-            row.setPadding(dp(16), dp(10), dp(16), 0);
+            row.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+            row.setPadding(dp(16), dp(10), dp(24), 0);   // 8dp more on the right: each button carries an 8dp left margin
             cancelBtn = new android.widget.Button(a);
             cancelBtn.setText("Cancel");
             sendBtn = new android.widget.Button(a);
@@ -849,7 +849,7 @@ final class DeviceReport {
             col.addView(row, new android.widget.LinearLayout.LayoutParams(
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
             githubLink = text(14, Widgets.BLUE);
-            githubLink.setText("Send with my own GitHub account instead ›");
+            githubLink.setText("Send Report with my own GitHub account instead ›");
             githubLink.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
             githubLink.setPadding(dp(20), dp(4), dp(20), dp(16));
             githubLink.setOnClickListener(v -> {
@@ -1054,7 +1054,7 @@ final class DeviceReport {
             t.setText(d.isEmpty() ? "Nothing to show yet: the log is empty, or the report leaves no room."
                     : "In a browser the Log field gets this digest. "
                     + (AnonReports.enabled() ? "Sent anonymously or in the GitHub app" : "In the GitHub app")
-                    + " it gets as much of the recent log instead, as much as GitHub allows (around 500 lines).\n\n" + d);
+                    + " it gets the recent log instead, as much as GitHub allows (around 500 lines).\n\n" + d);
             t.setTextIsSelectable(true);
             t.setPadding(dp(20), dp(8), dp(20), dp(8));
             android.widget.ScrollView sv = new android.widget.ScrollView(a);
