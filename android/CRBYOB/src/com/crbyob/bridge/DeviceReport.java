@@ -590,6 +590,7 @@ final class DeviceReport {
         private final Fields f;
         private final android.widget.LinearLayout body;
         private android.widget.EditText title, client, details;
+        private String measured = "";   // f.details up to the notes marker: sent above what the person types
         private android.widget.TextView scanner, network, result, error;
         private android.widget.CheckBox includeLog;
         private LogFiles.Saved saved;                // the log archive saved for this report, null = none
@@ -658,22 +659,6 @@ final class DeviceReport {
             return e;
         }
 
-        /**
-         * A value the app measured (firmware, app/phone/Android): shown as-is and not editable, so reports carry
-         * exactly what the phone and scanner said. Outlined instead of filled, to read as fixed.
-         */
-        private void fixed(String value, boolean known) {
-            android.widget.TextView t = text(15, known ? Widgets.TEXT : Widgets.GREY);
-            android.graphics.drawable.GradientDrawable g = Widgets.roundRect(0x00000000, dp(8));
-            g.setStroke(Math.max(1, dp(1)), Widgets.LINE);
-            t.setBackground(g);
-            t.setPadding(dp(10), dp(8), dp(10), dp(8));
-            t.setText(value);
-            t.setTextIsSelectable(true);                 // can still be copied
-            body.addView(t, new android.widget.LinearLayout.LayoutParams(
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
-        }
-
         /** A field that picks one of `options` in a styled list; "Choose…" until set. */
         private android.widget.TextView picker(String title, String value, java.util.List<String> options) {
             android.widget.TextView t = text(15, Widgets.TEXT);
@@ -725,35 +710,44 @@ final class DeviceReport {
 
         void show() {
             android.widget.TextView intro = text(14, Widgets.SUB);
-            intro.setText("This is everything the report will contain. Add what you saw and fix anything that's off; "
-                    + "the scanner, its firmware and the app details come straight from the scanner and this phone. "
-                    + (AnonReports.enabled() ? "Send Anonymous Report files it as a public GitHub issue for you, no "
-                    + "GitHub account needed." : "Continue opens it on GitHub, where you submit it."));
+            intro.setText("Check what's filled in and add what happened."
+                    + (AnonReports.enabled() ? "" : " Continue opens it on GitHub, where you submit it."));
             body.addView(intro);
             label("Title", true);
             title = field(f.title, "[Device] <scanner> on <phone>", false);
-            if (f.scannerDetected) {                   // the plugged-in scanner, identified by its USB product ID
-                label("Scanner \u00B7 detected over USB", false);
-                fixed(f.scanner, true);
-            } else {                                   // none plugged in, or a model the app doesn't know
+            if (!f.scannerDetected) {                  // none plugged in, or a model the app doesn't know
                 label("Scanner", true);
                 scanner = picker("Scanner", f.scanner, scannerOptions(a));
             }
-            label("Scanner firmware \u00B7 read from the scanner", false);
-            fixed(f.scannerFw.isEmpty() ? "Unknown: plug the scanner in to read it" : f.scannerFw, !f.scannerFw.isEmpty());
-            label("App, phone and Android version \u00B7 from this phone", false);
-            fixed(f.appInfo, true);
+            // what the scanner and this phone said, as one read-only summary: it goes in the report as-is
+            label("From the scanner and this phone", false);
+            android.widget.TextView facts = text(13, Widgets.SUB);
+            facts.setText((f.scannerDetected ? f.scanner + " (detected over USB) \u00B7 " : "")
+                    + (f.scannerFw.isEmpty() ? "Firmware unknown: plug the scanner in to read it" : "Firmware " + f.scannerFw)
+                    + "\n" + f.appInfo);
+            facts.setTextIsSelectable(true);
+            body.addView(facts);
             label("Network", true);
             network = picker("Network", f.network, java.util.Arrays.asList(NETWORKS));
             label("Creality Scan version", false);
             client = field(f.client, "Creality Scan 4.x (Windows) / CrealityScan 3.1.2 (Android)", false);
             label("Result", true);
             result = picker("Result", f.result, java.util.Arrays.asList(RESULTS));
-            label("What happened", true);
+            label("What happened", false);
             android.widget.TextView src = note(f.streamMs > 0 ? Widgets.SUB : Widgets.AMBER);
             src.setText(statsSource(f, android.text.format.DateFormat.getTimeFormat(a)));
             src.setVisibility(android.view.View.VISIBLE);
-            details = field(f.details, "", true);
+            // the measurements ride along above the person's own words; the box holds only what they type
+            int m = f.details.indexOf(NOTES_MARKER);
+            measured = m < 0 ? "" : f.details.substring(0, m + NOTES_MARKER.length()) + "\n\n";
+            android.widget.TextView seeMeasured = text(13, Widgets.BLUE);
+            seeMeasured.setText("The measurements are attached · See them ›");
+            seeMeasured.setPadding(0, dp(2), 0, dp(6));
+            seeMeasured.setOnClickListener(v -> showText("Attached measurements",
+                    measured.substring(0, Math.max(0, measured.indexOf(NOTES_MARKER))).trim()));
+            if (!measured.isEmpty()) body.addView(seeMeasured);
+            details = field(notesOf(f.details), "What you did, what worked, what didn't", true);
+            details.setMinLines(4);
             includeLog = new android.widget.CheckBox(a);
             includeLog.setText("Include the log");
             includeLog.setTextColor(Widgets.TEXT);
@@ -764,32 +758,25 @@ final class DeviceReport {
                     android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
             clp.topMargin = dp(10);
             body.addView(includeLog, clp);
+            // one line; the digest/zip details show in the digest view and when a browser opens the form
             android.widget.TextView logNote = text(13, Widgets.SUB);
-            logNote.setText(AnonReports.enabled()
-                    ? "The log goes in the report's Log field: as much of the recent log as fits. Sent with your own "
-                    + "GitHub account from a browser, it gets a digest instead, and the whole log is saved to Downloads "
-                    + "as a zip for you to attach. It helps most when something doesn't work."
-                    : "The log goes in the report's Log field. In a browser that's a digest, and the whole log "
-                    + "is saved to Downloads as a zip for you to attach. It helps most when something doesn't work.");
+            android.text.SpannableStringBuilder ln = new android.text.SpannableStringBuilder(
+                    "Recent log lines, private details removed. It helps most when something doesn't work. ");
+            appendLink(ln, "See it \u203A", this::showDigest);
+            logNote.setText(ln);
+            logNote.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
             body.addView(logNote);
-            android.widget.TextView preview = text(13, Widgets.BLUE);
-            preview.setText("See the digest \u203A");
-            preview.setPadding(0, dp(6), 0, dp(2));
-            preview.setOnClickListener(v -> showDigest());
-            body.addView(preview);
-            includeLog.setOnCheckedChangeListener((v, on) -> {
-                logNote.setAlpha(on ? 1f : 0.5f);
-                preview.setVisibility(on ? android.view.View.VISIBLE : android.view.View.GONE);
-            });
-            if (!f.includeLog) {
-                logNote.setAlpha(0.5f);
-                preview.setVisibility(android.view.View.GONE);
-            }
+            includeLog.setOnCheckedChangeListener((v, on) -> logNote.setAlpha(on ? 1f : 0.5f));
+            if (!f.includeLog) logNote.setAlpha(0.5f);
             android.widget.TextView privacy = text(13, Widgets.SUB);
-            privacy.setText("Never included: the scanner's serial number, Wi-Fi network names, passwords, and MAC and IP "
-                    + "addresses. The report is public on GitHub."
+            android.text.SpannableStringBuilder pv = new android.text.SpannableStringBuilder(
+                    "Public on GitHub. Never includes serial numbers, Wi-Fi names, passwords or addresses. ");
+            appendLink(pv, "More \u203A", () -> showText("What's in the report", "Never included: the scanner's serial "
+                    + "number, Wi-Fi network names, passwords, and MAC and IP addresses. The report is public on GitHub."
                     + (AnonReports.enabled() ? " So are any replies. An anonymous report also carries a tag that "
-                    + "links it to other reports from this phone." : ""));
+                    + "links it to other reports from this phone." : "")));
+            privacy.setText(pv);
+            privacy.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
             privacy.setPadding(0, dp(12), 0, 0);
             body.addView(privacy);
             error = text(14, Widgets.RED);
@@ -1049,22 +1036,36 @@ final class DeviceReport {
             String d = logFor(BuildConfig.REPO_URL, f, false,
                     fullLogNote(LogExport.fileName(System.currentTimeMillis()), "Downloads"), l.pinned, l.recent);
             f.includeLog = was;
-            android.widget.TextView t = text(11, Widgets.TEXT);
-            t.setTypeface(android.graphics.Typeface.MONOSPACE);
-            t.setText(d.isEmpty() ? "Nothing to show yet: the log is empty, or the report leaves no room."
-                    : "In a browser the Log field gets this digest. "
-                    + (AnonReports.enabled() ? "Sent anonymously or in the GitHub app" : "In the GitHub app")
+            showText("Log digest", d.isEmpty() ? "Nothing to show yet: the log is empty, or the report leaves no room."
+                    : "In a browser the Log field gets this digest, and the whole log is saved to Downloads as a zip "
+                    + "to attach. " + (AnonReports.enabled() ? "Sent anonymously or in the GitHub app" : "In the GitHub app")
                     + " it gets the recent log instead, as much as GitHub allows (around 500 lines).\n\n" + d);
+        }
+
+        /** A read-only text in its own scrolling dialog (selectable, so it can be copied). */
+        private void showText(String title, String s) {
+            android.widget.TextView t = text(12, Widgets.TEXT);
+            t.setText(s);
             t.setTextIsSelectable(true);
             t.setPadding(dp(20), dp(8), dp(20), dp(8));
             android.widget.ScrollView sv = new android.widget.ScrollView(a);
             sv.addView(t);
             android.app.AlertDialog dd = new android.app.AlertDialog.Builder(a)
-                    .setTitle("Log digest")
+                    .setTitle(title)
                     .setView(sv)
                     .setPositiveButton("OK", null)
                     .create();
             Widgets.showStyled(dd);
+        }
+
+        /** Appends a tappable blue `label` that runs `onTap`, for inline links such as "More ›". */
+        private void appendLink(android.text.SpannableStringBuilder sb, String label, Runnable onTap) {
+            int start = sb.length();
+            sb.append(label);
+            sb.setSpan(new android.text.style.ClickableSpan() {
+                @Override public void onClick(android.view.View w) { onTap.run(); }
+                @Override public void updateDrawState(android.text.TextPaint p) { p.setColor(Widgets.BLUE); }
+            }, start, sb.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
 
         /** Copies the dialog into the fields; false (and says what's missing) while a required one is empty. */
@@ -1094,12 +1095,12 @@ final class DeviceReport {
             f.network = (String) network.getTag();
             f.client = client.getText().toString().trim();
             f.result = (String) result.getTag();
-            f.details = details.getText().toString().trim();
+            f.details = (measured + details.getText().toString().trim()).trim();   // the report's text, as before
             if (includeLog != null) f.includeLog = includeLog.isChecked();
             java.util.List<String> missing = new java.util.ArrayList<>();
             android.view.View first = null;
             Object[][] req = {{"Title", title, f.title}, {"Scanner", scanner, f.scanner}, {"Network", network, f.network},
-                    {"Result", result, f.result}, {"What happened", details, f.details}};
+                    {"Result", result, f.result}};
             for (Object[] r : req) {
                 android.view.View v = (android.view.View) r[1];
                 if (v == null) continue;                  // the scanner shown as detected, not picked
