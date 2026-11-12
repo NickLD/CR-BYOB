@@ -596,6 +596,8 @@ final class DeviceReport {
         private android.widget.ScrollView scroll;
         private boolean tried;                       // Continue was tapped once: missing fields show in red
         private android.app.AlertDialog dialog;
+        private android.widget.TextView githubLink;   // "Send with my own GitHub account instead", null when anon is off
+        private boolean anon;                        // this submit goes to the report Worker, not the GitHub form
 
         Review(Activity a, Fields f) {
             this.a = a;
@@ -779,9 +781,21 @@ final class DeviceReport {
             }
             android.widget.TextView privacy = text(13, Widgets.SUB);
             privacy.setText("Never included: the scanner's serial number, Wi-Fi network names, passwords, and MAC and IP "
-                    + "addresses. The report is public on GitHub.");
+                    + "addresses. The report is public on GitHub."
+                    + (AnonReports.enabled() ? " Sent anonymously, the report and any replies are still public, and "
+                    + "carry a tag that links reports from this phone." : ""));
             privacy.setPadding(0, dp(12), 0, 0);
             body.addView(privacy);
+            if (AnonReports.enabled()) {
+                githubLink = text(13, Widgets.BLUE);
+                githubLink.setText("Send with my own GitHub account instead \u203A");
+                githubLink.setPadding(0, dp(6), 0, dp(2));
+                githubLink.setOnClickListener(v -> {
+                    anon = false;
+                    if (submit()) dialog.dismiss();
+                });
+                body.addView(githubLink);
+            }
             error = text(14, Widgets.RED);
             error.setPadding(0, dp(8), 0, 0);
             error.setVisibility(android.view.View.GONE);
@@ -793,13 +807,14 @@ final class DeviceReport {
             android.app.AlertDialog d = new android.app.AlertDialog.Builder(a)
                     .setTitle("Device report")
                     .setView(sv)
-                    .setPositiveButton("Continue on GitHub", null)
+                    .setPositiveButton(AnonReports.enabled() ? "Send Anonymous Report Without GitHub" : "Continue on GitHub", null)
                     .setNegativeButton("Cancel", null)
                     .create();
             if (d.getWindow() != null)
                 d.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
             d.setOnShowListener(x -> d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-                if (submit()) d.dismiss();
+                anon = AnonReports.enabled();
+                if (submit() && !anon) d.dismiss();    // sendAnon dismisses only once the send worked
             }));
             dialog = d;
             Widgets.showStyled(d);
@@ -821,7 +836,7 @@ final class DeviceReport {
                         if (dialog != null) dialog.dismiss();
                     })
                     .setNegativeButton("Send anyway", (x, w) -> {
-                        if (dialog != null) dialog.dismiss();
+                        if (dialog != null && !anon) dialog.dismiss();
                         proceed();
                     })
                     .create();
@@ -916,9 +931,67 @@ final class DeviceReport {
             return saved != null ? fullLogNote(saved.name, saved.where) : fullLogNote(null, null);
         }
 
-        /** Continue: asks which app opens the report (launch saves the log file when it's a browser). */
+        /** Continue: sends it anonymously, or asks which app opens the report (launch saves the log file when it's a browser). */
         private void proceed() {
-            openWith();
+            if (anon) sendAnon();
+            else openWith();
+        }
+
+        /**
+         * Posts the report to the Worker off the UI thread, with the GitHub app's log (no file to attach). The review
+         * stays open, buttons off, until it's done: on failure the person's entries are still there with the error.
+         */
+        private void sendAnon() {
+            LogFiles.Lines l = LogFiles.lines(a);
+            String issueTitle = f.title, report = body(f, logFor(BuildConfig.REPO_URL, f, true, fullLog(), l.pinned, l.recent));
+            enableButtons(false);
+            new Thread(() -> {
+                AnonReports.Sent s = null;
+                int code = 0;
+                try {
+                    s = AnonReports.send(a, issueTitle, report);
+                } catch (java.io.IOException e) {
+                    code = e instanceof AnonReports.HttpError ? ((AnonReports.HttpError) e).code : 0;
+                }
+                AnonReports.Sent sent = s;
+                int c = code;
+                a.runOnUiThread(() -> {
+                    if (a.isFinishing() || a.isDestroyed()) return;
+                    if (sent == null) {
+                        BLog.log("anon_report_failed", "code", c);
+                        enableButtons(true);
+                        error.setText(AnonReports.errorMessage(c));
+                        error.setVisibility(android.view.View.VISIBLE);
+                        scroll.post(() -> scroll.smoothScrollTo(0, error.getBottom()));
+                        return;
+                    }
+                    draft = null;
+                    dialog.dismiss();
+                    android.app.AlertDialog d = new android.app.AlertDialog.Builder(a)
+                            .setTitle("Report sent")
+                            .setMessage("Replies will show on the dashboard.")
+                            .setPositiveButton("See it on GitHub", (x, w) -> {
+                                try {
+                                    a.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
+                                            android.net.Uri.parse(sent.url)));
+                                } catch (android.content.ActivityNotFoundException e) {
+                                    android.widget.Toast.makeText(a, "No app can open GitHub links",
+                                            android.widget.Toast.LENGTH_LONG).show();
+                                }
+                            })
+                            .setNegativeButton("OK", null)
+                            .create();
+                    Widgets.showStyled(d);
+                });
+            }, "anon-report").start();
+        }
+
+        /** Off while a send runs, so it can't go twice or be closed before the result shows. */
+        private void enableButtons(boolean on) {
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setEnabled(on);
+            dialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE).setEnabled(on);
+            if (githubLink != null) githubLink.setEnabled(on);
+            dialog.setCancelable(on);
         }
 
         /** "See the digest": what a browser's Log field will get, with a placeholder file name. */
