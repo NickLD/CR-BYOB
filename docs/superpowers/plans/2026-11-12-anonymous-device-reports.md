@@ -18,8 +18,8 @@ line.
 ## Global Constraints
 
 - Worker: no runtime dependencies; no stored state; never log or publish the sender's IP.
-- ID: 32 lowercase hex chars; regex `^[0-9a-f]{32}$`. Tag = first 12 hex chars of SHA-256(ID as UTF-8).
-  Test vector shared by both sides: ID `0123456789abcdef0123456789abcdef` → tag `3eb1bd439947`.
+- ID: 32 lowercase hex chars; regex `^[0-9a-f]{32}$`. Tag = first 32 hex chars (128 bits) of SHA-256(ID as UTF-8).
+  Test vector shared by both sides: ID `0123456789abcdef0123456789abcdef` → tag `3eb1bd439947eb762998e566ccc2e099`.
 - Report limits: `title` ≤ 256 chars, `body` ≤ 60,000 chars and starts with `### Scanner`. Reply `body` 1–10,000 chars.
 - Issue footer, exactly: `\n\n---\nSent anonymously from the CR-BYOB app.\nReporter tag: \`<tag>\``
 - Reporter-reply comment first line, exactly: `**Reply from the reporter** (tag \`<tag>\`)` then a blank line, then text.
@@ -70,14 +70,14 @@ line.
 - [ ] **Step 1: `worker/package.json`** — `"type": "module"`, scripts `"test": "node --test test/"`,
   `"deploy": "npx wrangler deploy"`. No dependencies.
 - [ ] **Step 2: Write the failing tests** in `worker/test/rules.test.ts` (`node:test`, `node:assert/strict`):
-  - `tagOf('0123456789abcdef0123456789abcdef')` → `'3eb1bd439947'`
+  - `tagOf('0123456789abcdef0123456789abcdef')` → `'3eb1bd439947eb762998e566ccc2e099'`
   - `validId`: true for 32 lowercase hex; false for 31 chars, uppercase, non-string
   - `parseReport({id, title:'[Device] Otter on Pixel', body:'### Scanner\n\nOtter'})` → object; title `'Otter on Pixel'`
     → title `'[Device] Otter on Pixel'`; body not starting `### Scanner` → string; body 60,001 chars → string;
     title 257 chars → string; empty title → string
   - `parseReply`: `issue` 0, `-1`, `1.5`, `'3'` → string; body `''` or 10,001 chars → string; valid → object
   - `defang('hi @NickLD')` → `'hi @‍NickLD'`
-  - `hasTag(body + footer('3eb1bd439947'), '3eb1bd439947')` → true; with `'000000000000'` → false
+  - `hasTag(body + footer(TAG), TAG)` → true; with `'000000000000'` → false
   - `replyText('abc', 'x')` starts with ``**Reply from the reporter** (tag `abc`)\n\n``
 - [ ] **Step 3: Run** `cd worker && npm test` → FAIL (module not found).
 - [ ] **Step 4: Implement `worker/src/rules.ts`** — `tagOf` with `crypto.subtle.digest('SHA-256', ...)`; imports in
@@ -178,7 +178,7 @@ line.
 - [ ] **Step 1: Gradle** — `buildConfigField("String", "REPORT_WORKER_URL", "\"${providers.gradleProperty("crbyob.reportWorker").orElse("").get()}\"")`
   in the same block as `REPO_URL`. Do **not** add the property to `gradle.properties` yet.
 - [ ] **Step 2: Write the failing tests** in `AnonReportsTest`:
-  - `tagOf("0123456789abcdef0123456789abcdef")` equals `"3eb1bd439947"`
+  - `tagOf("0123456789abcdef0123456789abcdef")` equals `"3eb1bd439947eb762998e566ccc2e099"`
   - `newId()` (package-private static helper `deviceId` uses): matches `^[0-9a-f]{32}$`; two calls differ
   - `isDeveloper`: association `OWNER` → true; `NONE` with `user.type` `Bot` → true; `NONE` + `User` → false;
     own reply (bot login + marker + tag) → false

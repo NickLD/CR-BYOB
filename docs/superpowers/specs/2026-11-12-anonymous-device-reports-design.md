@@ -51,7 +51,7 @@ can follow and answer replies from inside the app without ever touching GitHub.
 - On the first anonymous send the app creates a random 128-bit ID (32 lowercase hex chars, e.g. a UUID without
   dashes) and stores it in the app's `bridge` SharedPreferences (not the cache, which Android may clear). It
   survives updates, not reinstalls. It never leaves the phone except in requests to the Worker over HTTPS.
-- **Reporter tag** = first 12 hex chars of SHA-256(ID). Public: it goes in every issue and reply the bot posts.
+- **Reporter tag** = first 32 hex chars (128 bits) of SHA-256(ID); shorter would let someone brute-force an ID matching a public tag in hours (found in review). Public: it goes in every issue and reply the bot posts.
   The full ID acts as the reporter's secret.
 
 ### Worker (Cloudflare, free plan)
