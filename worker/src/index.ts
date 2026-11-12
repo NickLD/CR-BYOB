@@ -41,15 +41,18 @@ export default {
         if (!res.ok) return fail(502, `GitHub answered ${res.status}`);
         const issue: any = await res.json();
         const got = (issue.labels ?? []).map((l: any) => l.name);
-        // GitHub can silently drop labels on create; the issue exists either way, so a failure here is not retried.
-        if (!LABELS.every((l) => got.includes(l))) await gh(token, 'POST', `${repo}/${issue.number}/labels`, { labels: LABELS });
+        // GitHub can silently drop labels on create; the issue exists either way, so this must never fail the request
+        // (a 502 makes the app resend and file a duplicate).
+        if (!LABELS.every((l) => got.includes(l)))
+          await gh(token, 'POST', `${repo}/${issue.number}/labels`, { labels: LABELS }).catch(() => {});
         return json({ number: issue.number, url: issue.html_url, bot: env.GH_BOT_LOGIN });
       }
 
       const res = await gh(token, 'GET', `${repo}/${parsed.issue}`);
       if (!res.ok) return fail(502, `GitHub answered ${res.status}`);
       const issue: any = await res.json();
-      if (!issue.labels?.some((l: any) => l.name === 'anonymous') || !hasTag(issue.body ?? '', tag))
+      const ours = issue.user?.login === env.GH_BOT_LOGIN && issue.labels?.some((l: any) => l.name === 'anonymous');
+      if (!ours || !hasTag(issue.body ?? '', tag))
         return fail(403, 'not your report');
       // replyText defangs the text itself.
       const posted = await gh(token, 'POST', `${repo}/${parsed.issue}/comments`, { body: replyText(tag, parsed.body) });

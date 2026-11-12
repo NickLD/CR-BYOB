@@ -22,6 +22,7 @@ export const gh = (token: string, method: string, path: string, body?: unknown):
       Authorization: `Bearer ${token}`,
       'User-Agent': 'crbyob-reports',
       'X-GitHub-Api-Version': '2022-11-28',
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });

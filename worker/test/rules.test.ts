@@ -6,7 +6,7 @@ const ID = '0123456789abcdef0123456789abcdef';
 const body = '### Scanner\n\nOtter';
 
 test('tagOf matches the shared vector', async () => {
-  assert.equal(await tagOf(ID), '3eb1bd439947');
+  assert.equal(await tagOf(ID), '3eb1bd439947eb762998e566ccc2e099');
 });
 
 test('validId', () => {
@@ -39,9 +39,10 @@ test('defang', () => {
 });
 
 test('hasTag', () => {
-  const b = body + footer('3eb1bd439947');
-  assert.equal(hasTag(b, '3eb1bd439947'), true);
-  assert.equal(hasTag(b, '000000000000'), false);
+  const b = body + footer('3eb1bd439947eb762998e566ccc2e099');
+  assert.equal(hasTag(b, '3eb1bd439947eb762998e566ccc2e099'), true);
+  assert.equal(hasTag(b, '00000000000000000000000000000000'), false);
+  assert.equal(hasTag(b, '3eb1bd439947'), false);
 });
 
 test('replyText', () => {

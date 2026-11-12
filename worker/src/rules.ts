@@ -1,6 +1,6 @@
 export async function tagOf(id: string): Promise<string> {
   const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(id));
-  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 12);
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
 }
 
 export const validId = (id: unknown): id is string => typeof id === 'string' && /^[0-9a-f]{32}$/.test(id);
