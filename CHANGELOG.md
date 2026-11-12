@@ -10,6 +10,19 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+### Added
+- Device reports can be sent anonymously, without a GitHub account: *Send Anonymous Report Without GitHub* in
+  the report dialog. The report, with as much of the recent log as GitHub allows if *Include the log* is on,
+  goes through the project's report server and is filed as a public GitHub issue by a bot. It carries a
+  reporter tag, a hash of a random ID kept on your phone, so reports from the same phone link up. Serial
+  numbers, Wi-Fi names, passwords, MAC and IP addresses are still left out, and the server doesn't publish your
+  IP address. *Send with my own GitHub account instead* opens the GitHub form as before.
+- Replies to anonymous reports show up in the app. When the app opens or comes back (at most every 15 minutes),
+  it checks your anonymous reports, and a reply from the developer, a maintainer or the project's bot shows a
+  card on the dashboard. The thread opens in the app, where you can answer, still anonymously. "Your reports"
+  under the dashboard footer link lists old threads, and the *Check for replies* switch in a thread turns the
+  checks off. Comments from other GitHub users aren't shown in the app.
+
 ## [0.2.9] - 2026-11-10
 
 ### Fixed
