@@ -991,6 +991,7 @@ final class DeviceReport {
                     }
                     draft = null;
                     dialog.dismiss();
+                    if (a instanceof MainActivity) ((MainActivity) a).refreshReplies();   // a dialog: no onResume follows
                     android.app.AlertDialog d = new android.app.AlertDialog.Builder(a)
                             .setTitle("Report sent")
                             .setMessage("Replies will show on the dashboard.")

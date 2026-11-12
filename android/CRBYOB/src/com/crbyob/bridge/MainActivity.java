@@ -1231,7 +1231,7 @@ public final class MainActivity extends Activity {
         replyCard.setVisibility(View.GONE);
     }
 
-    private void refreshReplies() {
+    void refreshReplies() {
         if (replyCard == null) return;
         android.content.SharedPreferences p = getSharedPreferences("bridge", MODE_PRIVATE);
         boolean on = AnonReports.enabled();

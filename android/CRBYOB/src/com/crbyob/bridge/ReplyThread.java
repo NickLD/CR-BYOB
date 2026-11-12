@@ -227,6 +227,7 @@ final class ReplyThread {
                 int nl = text.indexOf('\n');
                 text = nl < 0 ? "" : text.substring(nl + 1).trim();
             }
+            if (text.trim().isEmpty()) continue;
             String date = c.optString("created_at");
             TextView head = text(13, Widgets.SUB);
             head.setText(who + " · " + (date.length() >= 10 ? date.substring(0, 10) : date));
