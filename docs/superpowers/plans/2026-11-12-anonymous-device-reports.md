@@ -32,7 +32,7 @@ line.
 - `REPORT_WORKER_URL` empty → anonymous button, reply checks, card and "Your reports" line are all hidden.
 - Prefs file `bridge`. Keys: `anon_id`, `anon_bot`, `anon_reports` (JSON array string), `anon_check_replies`
   (boolean, default true), `anon_last_check` (long ms).
-- Button text, exactly: `Send Anonymous Report Without GitHub`. Card text: `The developer replied to your report ›`.
+- Main button text, exactly: `Send Anonymous Report Without GitHub`; secondary link: `Send with my own GitHub account instead ›`. Card text: `The developer replied to your report ›`.
 - Commits end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` and no Claude-Session line.
 
 ## Review Focus
@@ -203,9 +203,11 @@ line.
 - Consumes: `AnonReports.enabled()`, `send(...)`, `errorMessage(...)`; existing `body(Fields, String)`,
   `logFor(..., githubApp=true, ...)`, `LogFiles.lines(a)`.
 
-- [ ] **Step 1:** In `Review`, a field `boolean anon`. When `AnonReports.enabled()`, add
-  `.setNeutralButton("Send Anonymous Report Without GitHub", null)` and in the show listener set `anon = true;`
-  then the same `submit()` path as the positive button (which sets `anon = false`). `proceed()` becomes
+- [ ] **Step 1:** In `Review`, a field `boolean anon`. When `AnonReports.enabled()`: the positive button reads
+  `Send Anonymous Report Without GitHub` and sets `anon = true` before `submit()`; under the privacy line add a
+  blue link (styled like "See the digest ›") `Send with my own GitHub account instead ›` that sets `anon = false`
+  and calls `submit()` (dismissing the dialog when it returns true, as the positive button does). When not
+  enabled: no link, the positive button stays `Continue on GitHub` with `anon = false`. `proceed()` becomes
   `if (anon) sendAnon(); else openWith();` so "Send anyway" in `confirmNoStats` keeps working for both.
 - [ ] **Step 2:** `sendAnon()` — build `body(f, logFor(BuildConfig.REPO_URL, f, true, fullLog(), l.pinned, l.recent))`,
   disable the dialog's buttons, send on a background thread. Success: dismiss the review, show "Report sent" with
@@ -217,8 +219,8 @@ line.
   still public, and carry a tag that links reports from this phone."
 - [ ] **Step 4: Verify** — `cd android && ./gradlew :CRBYOB:assembleGithubDebug :CRBYOB:assemblePlayDebug
   :CRBYOB:lintGithubDebug` passes; build once with `-Pcrbyob.reportWorker=https://example.invalid` and confirm on
-  the API 28 emulator (`crbyob-api28`) that the button appears and a send shows the "Couldn't reach…" error with
-  entries kept; without the property the button is absent.
+  the API 28 emulator (`crbyob-api28`) that the anonymous button is primary, the GitHub link still opens the form, and a send shows the "Couldn't reach…" error with
+  entries kept; without the property the dialog is exactly as before.
 - [ ] **Step 5: Commit** — "Device report: Send Anonymous Report Without GitHub".
 
 ### Task 5: Replies — resume check, dashboard card, thread dialog, "Your reports"

@@ -15,8 +15,9 @@ can follow and answer replies from inside the app without ever touching GitHub.
 
 ## Goals
 
-- A **"Send Anonymous Report Without GitHub"** button in the device report dialog, next to the existing
-  "Continue on GitHub". Same fields, same review, same privacy scrubbing.
+- **"Send Anonymous Report Without GitHub"** becomes the device report dialog's main (positive) button. The
+  GitHub path stays, as a smaller blue link in the dialog, "Send with my own GitHub account instead ›" (owner's
+  decision: most people have no account). Same fields, same review, same privacy scrubbing.
 - The report lands as a normal public issue (`[Device] <scanner> on <phone>`, label `device report`) plus the
   label `anonymous`, filed by a GitHub App bot.
 - Reports from one phone can be correlated: each carries a public **reporter tag** derived from a per-install ID.
@@ -27,7 +28,8 @@ can follow and answer replies from inside the app without ever touching GitHub.
 
 ## Non-goals
 
-- Replacing the GitHub path. "Continue on GitHub" stays as it is.
+- Removing the GitHub path. It keeps working exactly as now, just from the secondary link (and stays the main
+  button in builds without a Worker address).
 - Background checks or system notifications for replies. The app checks only when it is opened or comes back to
   the foreground (owner's decision). Can be added later; nothing here blocks it.
 - Accounts, logins, email, or any private contact channel.
@@ -100,8 +102,9 @@ All in shared code (`android/CRBYOB/src/...`), reusing what exists:
   defaults to empty (read with `.orElse("")`, so CI and release builds never break). Empty = the anonymous button
   and reply checks are hidden. *Claude's call:* the URL is committed to `android/gradle.properties` only after
   the owner has deployed the Worker, in the same release PR, so no release ships a button that can't work.
-- **Send:** a neutral button "Send Anonymous Report Without GitHub" on the existing device report dialog
-  (`DeviceReport`). It goes through the same checks as "Continue on GitHub" (required fields, the "No scan in this
+- **Send:** the positive button of the existing device report dialog (`DeviceReport`) reads "Send Anonymous Report
+  Without GitHub" (it reads "Continue on GitHub" as today when the Worker address is empty). The secondary link
+  "Send with my own GitHub account instead ›" sits under the privacy line. Both go through the same checks (required fields, the "No scan in this
   report" confirm), then POSTs `title` and the body the GitHub-app path already builds: `body(f, logFor(...,
   githubApp = true, ...))`, which carries the readable log when "Include the log" is on. No zip, no digest. Sent on
   a background thread with `HttpURLConnection`.
