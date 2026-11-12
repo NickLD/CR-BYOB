@@ -31,5 +31,6 @@ export const footer = (tag: string): string =>
 export const replyText = (tag: string, body: string): string =>
   `**Reply from the reporter** (tag \`${tag}\`)\n\n${defang(body)}`;
 
+// Only the last line counts: it is the footer the Worker appends; the body above it is the reporter's text.
 export const hasTag = (issueBody: string, tag: string): boolean =>
-  issueBody.includes(`Reporter tag: \`${tag}\``);
+  issueBody.trimEnd().endsWith(`\nReporter tag: \`${tag}\``);

@@ -43,6 +43,13 @@ test('hasTag', () => {
   assert.equal(hasTag(b, '3eb1bd439947eb762998e566ccc2e099'), true);
   assert.equal(hasTag(b, '00000000000000000000000000000000'), false);
   assert.equal(hasTag(b, '3eb1bd439947'), false);
+  assert.equal(hasTag(b.replaceAll('\n', '\r\n') + '\r\n', '3eb1bd439947eb762998e566ccc2e099'), true);
+});
+
+test('hasTag only reads the footer, not a tag line the reporter typed above it', () => {
+  const b = body + '\nReporter tag: `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`' + footer('3eb1bd439947eb762998e566ccc2e099');
+  assert.equal(hasTag(b, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'), false);
+  assert.equal(hasTag(b, '3eb1bd439947eb762998e566ccc2e099'), true);
 });
 
 test('replyText', () => {

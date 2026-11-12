@@ -57,8 +57,8 @@ function reset() {
   issue = { number: 42, body: `### Scanner\n\nOtter${footer(TAG)}`, labels: [{ name: 'device report' }, { name: 'anonymous' }], user: { login: 'crbyob-reports[bot]' } };
 }
 
-const post = (path: string, body: unknown) =>
-  worker.fetch(new Request(`https://w.example${path}`, { method: 'POST', body: typeof body === 'string' ? body : JSON.stringify(body) }), env);
+const post = (path: string, body: unknown, type = 'application/json') =>
+  worker.fetch(new Request(`https://w.example${path}`, { method: 'POST', headers: { 'Content-Type': type }, body: typeof body === 'string' ? body : JSON.stringify(body) }), env);
 const commented = () => calls.some((c) => c.method === 'POST' && c.url.endsWith('/comments'));
 
 test('/reply to an issue with another tag is 403 and posts nothing', async () => {
@@ -156,6 +156,15 @@ test('rate limit, unknown route, bad input', async () => {
   assert.equal((await post('/report', { id: 'nope', title: '[Device] x', body: '### Scanner' })).status, 400);
   assert.equal((await post('/reply', { id: ID, issue: 0, body: 'x' })).status, 400);
   assert.equal(calls.length, 0);
+});
+
+test('a body that is not application/json is 415 before anything else', async () => {
+  reset();
+  const res = await post('/report', JSON.stringify({ id: ID, title: '[Device] x', body: '### Scanner' }), 'text/plain');
+  assert.equal(res.status, 415);
+  assert.equal(typeof (await res.json()).error, 'string');
+  assert.equal(calls.length, 0);
+  assert.equal((await post('/report', { id: ID, title: '[Device] x', body: '### Scanner' }, 'application/json; charset=utf-8')).status, 200);
 });
 
 test('GitHub failure is 502', async () => {

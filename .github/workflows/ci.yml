@@ -54,6 +54,22 @@ jobs:
           path: android/CRBYOB/build/reports/lint-results-*.html
           if-no-files-found: ignore
 
+  worker:
+    name: Report Worker tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1   # v7.1.0
+        with:
+          node-version: "24"          # strips TypeScript types by default; the Worker has no dependencies
+      - name: Tests
+        run: npm test
+
   repo:
     name: Changelog and model table
     runs-on: ubuntu-latest

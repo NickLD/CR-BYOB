@@ -26,13 +26,19 @@ reporter's replies after checking the issue carries their tag. `POST /report` an
    npm run deploy
    ```
    Delete both key files once the secret is set.
-7. Smoke test, then close the issue it files:
+7. Smoke test with a fresh ID (the test ID in the code is public: anyone could reply as it):
    ```
-   curl -X POST https://crbyob-reports.<account>.workers.dev/report \
-     -H 'Content-Type: application/json' \
-     -d '{"id":"0123456789abcdef0123456789abcdef","title":"[Device] Worker smoke test","body":"### Scanner\n\ntest"}'
+   ID=$(openssl rand -hex 16)
+   W=https://crbyob-reports.<account>.workers.dev
+   curl -X POST $W/report -H 'Content-Type: application/json' \
+     -d '{"id":"'$ID'","title":"[Device] Worker smoke test","body":"### Scanner\n\ntest"}'
    ```
-   It answers `{"number":…,"url":…,"bot":…}`. Check the issue has both labels.
+   It answers `{"number":…,"url":…,"bot":…}`. Check the issue has both labels. Then reply on it with the number:
+   ```
+   curl -X POST $W/reply -H 'Content-Type: application/json' -d '{"id":"'$ID'","issue":<number>,"body":"smoke reply"}'
+   ```
+   It answers `{"ok":true}`. A 403 here while `/report` works means `GH_BOT_LOGIN` doesn't match the App's bot
+   login, which turns every reply into a 403. Afterwards delete the smoke issue (or close and lock it).
 8. Put the Worker URL in `android/gradle.properties` as `crbyob.reportWorker`.
 
 To stop anonymous posting at once: suspend the App on its installation settings page (step 2's URL, Suspend). The Worker then gets

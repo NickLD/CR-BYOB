@@ -19,6 +19,9 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const path = new URL(req.url).pathname;
     if (req.method !== 'POST' || (path !== '/report' && path !== '/reply')) return fail(404, 'not found');
+    // Browsers can't send application/json cross-origin without a preflight, which 404s: no posts from visitors' IPs.
+    if (!req.headers.get('Content-Type')?.toLowerCase().startsWith('application/json'))
+      return fail(415, 'Content-Type must be application/json');
     if (!(await env.LIMITER.limit({ key: req.headers.get('CF-Connecting-IP') ?? 'none' })).success)
       return fail(429, 'too many requests, try again in a minute');
 
