@@ -725,8 +725,9 @@ final class DeviceReport {
         void show() {
             android.widget.TextView intro = text(14, Widgets.SUB);
             intro.setText("This is everything the report will contain. Add what you saw and fix anything that's off; "
-                    + "the scanner, its firmware and the app details come straight from the scanner and this phone. Continue opens it "
-                    + "on GitHub, where you submit it.");
+                    + "the scanner, its firmware and the app details come straight from the scanner and this phone. "
+                    + (AnonReports.enabled() ? "Send Anonymous Report posts it straight to a public GitHub issue, no "
+                    + "GitHub account needed." : "Continue opens it on GitHub, where you submit it."));
             body.addView(intro);
             label("Title", true);
             title = field(f.title, "[Device] <scanner> on <phone>", false);
@@ -763,7 +764,11 @@ final class DeviceReport {
             clp.topMargin = dp(10);
             body.addView(includeLog, clp);
             android.widget.TextView logNote = text(13, Widgets.SUB);
-            logNote.setText("The log goes in the report's Log field. In a browser that's a digest, and the whole log "
+            logNote.setText(AnonReports.enabled()
+                    ? "The log goes in the report's Log field. Sent anonymously, that's as much of the recent log as "
+                    + "GitHub allows. With your own GitHub account in a browser, it's a digest, and the whole log is saved "
+                    + "to Downloads as a zip for you to attach. It helps most when something doesn't work."
+                    : "The log goes in the report's Log field. In a browser that's a digest, and the whole log "
                     + "is saved to Downloads as a zip for you to attach. It helps most when something doesn't work.");
             body.addView(logNote);
             android.widget.TextView preview = text(13, Widgets.BLUE);
@@ -816,8 +821,26 @@ final class DeviceReport {
                 anon = AnonReports.enabled();
                 if (submit() && !anon) d.dismiss();    // sendAnon dismisses only once the send worked
             }));
+            if (AnonReports.enabled()) keepButtonsWhole(d);
             dialog = d;
             Widgets.showStyled(d);
+        }
+
+        /**
+         * The long anonymous label stacks the buttons, and Android then gives the form all the height and Cancel only
+         * a peek. The button bar's minimum height is what Android reserves for it, so it's set to the bar's full height
+         * and the form scrolls instead. Hooked before the first layout (create() is safe to call twice).
+         */
+        private void keepButtonsWhole(android.app.AlertDialog d) {
+            d.create();
+            int id = a.getResources().getIdentifier("buttonPanel", "id", "android");
+            android.view.View bp = id != 0 ? d.findViewById(id) : null;
+            if (!(bp instanceof android.view.ViewGroup)) return;
+            bp.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+                android.view.View bar = ((android.view.ViewGroup) v).getChildAt(0);
+                int h = bar == null ? 0 : bar.getMeasuredHeight() + v.getPaddingTop() + v.getPaddingBottom();
+                if (h > v.getMinimumHeight()) v.post(() -> v.setMinimumHeight(h));
+            });
         }
 
         /**
@@ -945,6 +968,7 @@ final class DeviceReport {
             LogFiles.Lines l = LogFiles.lines(a);
             String issueTitle = f.title, report = body(f, logFor(BuildConfig.REPO_URL, f, true, fullLog(), l.pinned, l.recent));
             enableButtons(false);
+            error.setVisibility(android.view.View.GONE);
             new Thread(() -> {
                 AnonReports.Sent s = null;
                 int code = 0;
@@ -1006,8 +1030,9 @@ final class DeviceReport {
             android.widget.TextView t = text(11, Widgets.TEXT);
             t.setTypeface(android.graphics.Typeface.MONOSPACE);
             t.setText(d.isEmpty() ? "Nothing to show yet: the log is empty, or the report leaves no room."
-                    : "In a browser the Log field gets this digest. In the GitHub app it gets as much of the recent "
-                    + "log instead, as much as GitHub allows (around 500 lines).\n\n" + d);
+                    : "In a browser the Log field gets this digest. "
+                    + (AnonReports.enabled() ? "Sent anonymously or in the GitHub app" : "In the GitHub app")
+                    + " it gets as much of the recent log instead, as much as GitHub allows (around 500 lines).\n\n" + d);
             t.setTextIsSelectable(true);
             t.setPadding(dp(20), dp(8), dp(20), dp(8));
             android.widget.ScrollView sv = new android.widget.ScrollView(a);
