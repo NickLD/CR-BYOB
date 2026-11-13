@@ -10,6 +10,14 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+## [0.2.11] - 2026-11-12
+
+### Fixed
+- CR-Scan Raptor: blue-line scans with color no longer lock up on Max. Boost and Max raised the color camera
+  along with the IR cameras, but in blue-line mode the Raptor allows color only up to 10 fps: on Max it sent
+  no color at all and Creality Scan kept restarting the streams. Color now stays at the scanner's limit for
+  the scan mode, which should also fix the all-black colors after a Boost scan.
+
 ## [0.2.10] - 2026-11-12
 
 ### Added
