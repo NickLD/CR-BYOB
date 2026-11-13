@@ -12,7 +12,7 @@ when tagging. A release build fails if its version has no dated section here.
 
 ### Added
 - Device reports: an anonymous report with *Include logs* ticked sends your whole redacted log privately to the
-  maintainer (up to 5 MB, never published); the public report keeps only its last lines. The form shows the size.
+  maintainer (up to 5 MB, never published); the public report keeps only its last lines.
 - Device reports: *Attach most recent logs* in a report's reply box sends your latest log privately with the reply.
 - Device reports: *Send a device report* first offers to add your latest logs to a report you already have open,
   instead of starting a new one.
