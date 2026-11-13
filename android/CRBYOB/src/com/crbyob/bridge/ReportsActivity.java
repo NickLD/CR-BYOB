@@ -93,6 +93,11 @@ public final class ReportsActivity extends Activity {
         root.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
         if (issue == 0) {
+            TextView about = text(13, Widgets.SUB);
+            about.setText("Only reports sent anonymously from this app are listed and checked for replies here. "
+                    + "Reports you filed on GitHub with your own account aren't: GitHub notifies you of their replies.");
+            about.setPadding(dp(4), 0, dp(4), dp(12));
+            body.addView(about);
             body.addView(list, wide());
             body.addView(checkSwitch(), wide());
         } else {
@@ -133,7 +138,7 @@ public final class ReportsActivity extends Activity {
         bar.addView(t, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         if (issue != 0) {
             web = text(14, Widgets.TEXT);
-            web.setText("View on GitHub");
+            web.setText("View on GitHub ↗");
             web.setBackground(Widgets.roundRect(Widgets.LINE, dp(10)));
             web.setPadding(dp(12), dp(8), dp(12), dp(8));
             web.setOnClickListener(v -> {
