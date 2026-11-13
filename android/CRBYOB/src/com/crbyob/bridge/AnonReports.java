@@ -95,6 +95,16 @@ final class AnonReports {
         return (nl < 0 ? body : body.substring(0, nl)).contains(", full log Id: `");
     }
 
+    /** How long ago, for "Refreshed … ago": just now, then minutes, hours, days. */
+    static String ago(long ms) {
+        long min = ms / 60_000;
+        if (min < 1) return "just now";
+        if (min < 60) return min + " min ago";
+        if (min < 24 * 60) return (min / 60) + " h ago";
+        long d = min / (24 * 60);
+        return d + (d == 1 ? " day ago" : " days ago");
+    }
+
     /** The same reply text, ignoring the zero-width joiners the Worker puts after each @ and surrounding space. */
     static boolean sameReply(String posted, String typed) {
         return posted.replace("\u200D", "").trim().equals(typed.replace("\u200D", "").trim());
@@ -348,6 +358,7 @@ final class AnonReports {
             if (github) {
                 c.setRequestProperty("Accept", "application/vnd.github+json");
                 c.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+                c.setRequestProperty("Cache-Control", "no-cache");   // asks any cache on the way for a fresh answer
             }
             if (json != null && zip != null) {
                 byte[] head = frameHeader(json.getBytes(StandardCharsets.UTF_8));

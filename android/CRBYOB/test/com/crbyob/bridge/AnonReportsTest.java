@@ -196,4 +196,13 @@ public class AnonReportsTest {
         assertTrue(AnonReports.sameReply("Thanks @‍NickLD\n", "Thanks @NickLD"));
         assertFalse(AnonReports.sameReply("Thanks", "Thanks again"));
     }
+
+    @Test public void ago_inPlainSteps() {
+        assertEquals("just now", AnonReports.ago(0));
+        assertEquals("just now", AnonReports.ago(59_000));
+        assertEquals("1 min ago", AnonReports.ago(60_000));
+        assertEquals("59 min ago", AnonReports.ago(59 * 60_000L + 59_000));
+        assertEquals("1 h ago", AnonReports.ago(60 * 60_000L));
+        assertEquals("2 days ago", AnonReports.ago(2 * 86_400_000L));
+    }
 }

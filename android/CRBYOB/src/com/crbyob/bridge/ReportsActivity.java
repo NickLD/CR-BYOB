@@ -62,6 +62,15 @@ public final class ReportsActivity extends Activity {
     private final java.util.List<String[]> pending = new java.util.ArrayList<>();
     private JSONObject lastIssue;        // the last thread loaded, to redraw it with a pending reply at once
     private JSONArray lastComments;
+    private TextView refreshed;          // "Refreshed 2 min ago · Refresh now"
+    private long loadedAt;               // when the thread last loaded, 0 = not yet
+    private boolean loading;
+    private final Runnable tick = new Runnable() {   // keeps "… ago" current while the page shows
+        @Override public void run() {
+            showRefreshed();
+            scroll.postDelayed(this, 30_000);
+        }
+    };
 
     private int dp(float v) {
         return Widgets.dp(this, v);
@@ -130,6 +139,12 @@ public final class ReportsActivity extends Activity {
     }
 
     @Override
+    protected void onPause() {
+        super.onPause();
+        if (issue != 0) scroll.removeCallbacks(tick);
+    }
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
         dropLog();   // an attached log that wasn't sent stays on the phone only as long as this screen
@@ -139,6 +154,7 @@ public final class ReportsActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (issue == 0) fillList();     // a thread may have marked a report read, or dropped a deleted one
+        else tick.run();
     }
 
     /** ← Back, the page title, and (on a thread) "View on GitHub". */
@@ -276,6 +292,10 @@ public final class ReportsActivity extends Activity {
         c.setOrientation(LinearLayout.VERTICAL);
         c.setBackgroundColor(Widgets.CARD);
         c.setPadding(dp(16), dp(10), dp(16), dp(10));
+        refreshed = text(13, Widgets.SUB);
+        refreshed.setPadding(0, 0, 0, dp(8));
+        refreshed.setOnClickListener(v -> load());
+        c.addView(refreshed, wide());
         box = new EditText(this);
         box.setTextColor(Widgets.TEXT);
         box.setHintTextColor(Widgets.GREY);
@@ -382,6 +402,9 @@ public final class ReportsActivity extends Activity {
      * comments, marks the report read, and shows the developer's comments and this phone's replies.
      */
     private void load() {
+        if (loading) return;
+        loading = true;
+        showRefreshed();
         status.setTextColor(Widgets.SUB);
         status.setText("Loading replies…");
         status.setVisibility(View.VISIBLE);
@@ -415,6 +438,9 @@ public final class ReportsActivity extends Activity {
             int c = code;
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed()) return;
+                loading = false;
+                if (got != null) loadedAt = System.currentTimeMillis();
+                showRefreshed();
                 showClosed();
                 if (got == null) {
                     if (record() == null) {                    // deleted: the badge says so, an error would mislead
@@ -429,6 +455,23 @@ public final class ReportsActivity extends Activity {
                 render(report, got, bot, tag);
             });
         }, "anon-thread").start();
+    }
+
+    /** "Refreshed 2 min ago · Refresh now" (the whole line taps), or "Refreshing…" while a load runs. */
+    private void showRefreshed() {
+        if (refreshed == null) return;
+        if (loading) {
+            refreshed.setText("Refreshing\u2026");
+            return;
+        }
+        android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder(
+                loadedAt == 0 ? "Not loaded yet" : "Refreshed " + AnonReports.ago(System.currentTimeMillis() - loadedAt));
+        sb.append(" \u00b7 ");
+        int from = sb.length();
+        sb.append("Refresh now");
+        sb.setSpan(new android.text.style.ForegroundColorSpan(Widgets.BLUE), from, sb.length(),
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        refreshed.setText(sb);
     }
 
     private static final String LOG_NOTE = "\n\n_\uD83D\uDCCE Full log sent privately_";

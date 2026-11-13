@@ -16,6 +16,7 @@ when tagging. A release build fails if its version has no dated section here.
 - Device reports: *Attach most recent logs* in a report's reply box sends your latest log privately with the reply.
 - Device reports: *Send a device report* first offers to add your latest logs to a report you already have open,
   instead of starting a new one.
+- Device reports: a report's page says when it last refreshed, with *Refresh now*; a reply you send shows at once.
 
 ## [0.2.12] - 2026-11-13
 
