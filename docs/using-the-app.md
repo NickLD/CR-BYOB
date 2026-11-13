@@ -334,7 +334,7 @@ anonymous reports on GitHub. If the developer, a maintainer or the project's bot
 anonymously. "View your N submitted device reports ›", under "Tried a scanner or phone? Send a device report ›" at the bottom of the
 dashboard, opens *Your reports*: every report sent anonymously from this phone, each with its status (Open,
 Resolved, Not planned, Duplicate or Locked), and Back from a thread returns to it. Reports filed with your own
-GitHub account aren't listed: GitHub notifies you of their replies.
+GitHub account aren't listed: check GitHub for their replies.
 Comments from other GitHub users aren't shown in the app; *View on GitHub* shows everything. A closed or locked
 report takes no more replies, and the checks skip closed reports; opening one re-reads it, so a report reopened
 on GitHub takes replies again. A report deleted on GitHub leaves the list.

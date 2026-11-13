@@ -95,7 +95,7 @@ public final class ReportsActivity extends Activity {
         if (issue == 0) {
             TextView about = text(13, Widgets.SUB);
             about.setText("Only reports sent anonymously from this app are listed and checked for replies here. "
-                    + "Reports you filed on GitHub with your own account aren't: GitHub notifies you of their replies.");
+                    + "Check GitHub for replies on personally-submitted reports.");
             about.setPadding(dp(4), 0, dp(4), dp(12));
             body.addView(about);
             body.addView(list, wide());
