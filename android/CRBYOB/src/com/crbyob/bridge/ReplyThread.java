@@ -242,15 +242,25 @@ final class ReplyThread {
                 text = nl < 0 ? "" : text.substring(nl + 1).trim();
             }
             if (text.trim().isEmpty()) continue;
-            String date = c.optString("created_at");
-            TextView head = text(13, Widgets.SUB);
-            head.setText(who + " · " + (date.length() >= 10 ? date.substring(0, 10) : date));
-            head.setPadding(0, dp(list.getChildCount() == 0 ? 4 : 14), 0, dp(2));
-            list.addView(head);
+            // chat-style bubbles: the reporter's own replies tinted blue and set in from the left, the
+            // developer's grey and set in from the right, so who said what reads at a glance
+            LinearLayout bubble = new LinearLayout(a);
+            bubble.setOrientation(LinearLayout.VERTICAL);
+            bubble.setBackground(Widgets.roundRect(mine ? (Widgets.BLUE & 0x00FFFFFF) | 0x33000000 : Widgets.LINE, dp(10)));
+            bubble.setPadding(dp(12), dp(8), dp(12), dp(10));
+            TextView head = text(12, Widgets.SUB);
+            head.setText(who + " · " + localTime(c.optString("created_at")));
+            head.setPadding(0, 0, 0, dp(2));
+            bubble.addView(head);
             TextView t = text(15, Widgets.TEXT);
             t.setText(text);
             t.setTextIsSelectable(true);
-            list.addView(t);
+            bubble.addView(t);
+            LinearLayout.LayoutParams lp = wide();
+            lp.topMargin = dp(list.getChildCount() == 0 ? 4 : 8);
+            if (mine) lp.leftMargin = dp(32);
+            else lp.rightMargin = dp(32);
+            list.addView(bubble, lp);
         }
         status.setVisibility(list.getChildCount() == 0 ? View.VISIBLE : View.GONE);
         status.setTextColor(Widgets.SUB);
@@ -288,6 +298,19 @@ final class ReplyThread {
                 load();
             });
         }, "anon-reply").start();
+    }
+
+    /** GitHub's UTC timestamp ("2026-11-12T23:48:29Z") as the phone's local date and time, in its 12/24-hour style. */
+    private String localTime(String iso) {
+        java.text.SimpleDateFormat utc = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US);
+        utc.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+        try {
+            java.util.Date d = utc.parse(iso);
+            return android.text.format.DateFormat.getMediumDateFormat(a).format(d) + ", "
+                    + android.text.format.DateFormat.getTimeFormat(a).format(d);
+        } catch (java.text.ParseException | NullPointerException e) {
+            return iso.length() >= 10 ? iso.substring(0, 10) : iso;
+        }
     }
 
     /** While a reply sends: Send and the box are off and dimmed, and the spinner shows. */
