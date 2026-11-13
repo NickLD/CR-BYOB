@@ -26,7 +26,7 @@ import java.io.IOException;
  * Worker. A thread always opens on top of the list, so Back leads to the list. Opening a thread marks it read.
  */
 public final class ReportsActivity extends Activity {
-    private static final String EXTRA_ISSUE = "issue", EXTRA_OPEN = "open";
+    private static final String EXTRA_ISSUE = "issue", EXTRA_OPEN = "open", EXTRA_ATTACH = "attach_log";
 
     /** The list of reports. */
     static void openList(Context c) {
@@ -35,7 +35,12 @@ public final class ReportsActivity extends Activity {
 
     /** One report's thread, over the list. */
     static void open(Context c, int issue) {
-        c.startActivity(new Intent(c, ReportsActivity.class).putExtra(EXTRA_OPEN, issue));
+        open(c, issue, false);
+    }
+
+    /** One report's thread, over the list; with attachLog, the reply box starts with the latest logs attached. */
+    static void open(Context c, int issue, boolean attachLog) {
+        c.startActivity(new Intent(c, ReportsActivity.class).putExtra(EXTRA_OPEN, issue).putExtra(EXTRA_ATTACH, attachLog));
     }
 
     private int issue;                   // 0 on the list page
@@ -49,6 +54,24 @@ public final class ReportsActivity extends Activity {
     private LinearLayout sending;        // spinner + "Sending…" while a reply goes out
     private boolean sendingNow;
     private ScrollView scroll;
+    private TextView attach, logPill;    // "Attach most recent logs", and the attached log's pill (tap ✕ to remove)
+    private java.io.File logZip;         // the attached log, null when none
+    private int logBuild;                // bumped by each attach and remove, so a stale build is dropped
+    // replies sent from here that GitHub's list doesn't show yet (it serves the list cached for up to a minute):
+    // {text, "log" when a log went with it}; shown as "You · just now" until a load finds them
+    private final java.util.List<String[]> pending = new java.util.ArrayList<>();
+    private JSONObject lastIssue;        // the last thread loaded, to redraw it with a pending reply at once
+    private JSONArray lastComments;
+    private TextView refreshed;          // "Refreshed 2 min ago · Refresh now"
+    private long loadedAt;               // when the thread last loaded, 0 = not yet
+    private boolean loading;
+    private final Runnable tick = new Runnable() {   // keeps "… ago" current while the page shows
+        @Override public void run() {
+            showRefreshed();
+            scroll.removeCallbacks(this);     // one tick at a time, however often onResume runs
+            scroll.postDelayed(this, 1_000);
+        }
+    };
 
     private int dp(float v) {
         return Widgets.dp(this, v);
@@ -107,17 +130,32 @@ public final class ReportsActivity extends Activity {
 
         int open = getIntent().getIntExtra(EXTRA_OPEN, 0);
         if (open > 0 && b == null)     // asked for one report: the list goes under it, for Back
-            startActivity(new Intent(this, ReportsActivity.class).putExtra(EXTRA_ISSUE, open));
+            startActivity(new Intent(this, ReportsActivity.class).putExtra(EXTRA_ISSUE, open)
+                    .putExtra(EXTRA_ATTACH, getIntent().getBooleanExtra(EXTRA_ATTACH, false)));
         if (issue != 0) {
             showClosed();
             load();
+            if (b == null && getIntent().getBooleanExtra(EXTRA_ATTACH, false) && box.getVisibility() == View.VISIBLE) attachLog();
         }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (issue != 0) scroll.removeCallbacks(tick);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        dropLog();   // an attached log that wasn't sent stays on the phone only as long as this screen
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         if (issue == 0) fillList();     // a thread may have marked a report read, or dropped a deleted one
+        else tick.run();
     }
 
     /** ← Back, the page title, and (on a thread) "View on GitHub". */
@@ -255,6 +293,10 @@ public final class ReportsActivity extends Activity {
         c.setOrientation(LinearLayout.VERTICAL);
         c.setBackgroundColor(Widgets.CARD);
         c.setPadding(dp(16), dp(10), dp(16), dp(10));
+        refreshed = text(13, Widgets.SUB);
+        refreshed.setPadding(0, 0, 0, dp(8));
+        refreshed.setOnClickListener(v -> load());
+        c.addView(refreshed, wide());
         box = new EditText(this);
         box.setTextColor(Widgets.TEXT);
         box.setHintTextColor(Widgets.GREY);
@@ -277,6 +319,22 @@ public final class ReportsActivity extends Activity {
         box.setGravity(Gravity.TOP | Gravity.START);
         box.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(10_000)});  // Worker's limit
         c.addView(box, wide());
+        // the log row: a quick action, or the attached log as a pill
+        LinearLayout logRow = new LinearLayout(this);
+        logRow.setGravity(Gravity.CENTER_VERTICAL);
+        logRow.setPadding(0, dp(6), 0, 0);
+        attach = text(14, Widgets.BLUE);
+        attach.setText("\uD83D\uDCCE Attach most recent logs");
+        attach.setPadding(0, dp(4), dp(8), dp(4));
+        attach.setOnClickListener(v -> attachLog());
+        logRow.addView(attach);
+        logPill = text(13, Widgets.TEXT);
+        logPill.setBackground(Widgets.roundRect(Widgets.LINE, dp(14)));
+        logPill.setPadding(dp(12), dp(6), dp(12), dp(6));
+        logPill.setVisibility(View.GONE);
+        logPill.setOnClickListener(v -> dropLog());
+        logRow.addView(logPill);
+        c.addView(logRow, wide());
         error = text(14, Widgets.RED);
         error.setPadding(0, dp(8), 0, 0);
         error.setVisibility(View.GONE);
@@ -335,6 +393,8 @@ public final class ReportsActivity extends Activity {
         web.setVisibility(r == null ? View.GONE : View.VISIBLE);
         box.setVisibility(shut ? View.GONE : View.VISIBLE);   // the bar stays: it carries the badge
         send.setVisibility(shut ? View.GONE : View.VISIBLE);
+        if (shut) dropLog();
+        attach.setVisibility(shut || logPill.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
         updateSend();
     }
 
@@ -343,6 +403,9 @@ public final class ReportsActivity extends Activity {
      * comments, marks the report read, and shows the developer's comments and this phone's replies.
      */
     private void load() {
+        if (loading) return;
+        loading = true;
+        showRefreshed();
         status.setTextColor(Widgets.SUB);
         status.setText("Loading replies…");
         status.setVisibility(View.VISIBLE);
@@ -376,6 +439,9 @@ public final class ReportsActivity extends Activity {
             int c = code;
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed()) return;
+                loading = false;
+                if (got != null) loadedAt = System.currentTimeMillis();
+                showRefreshed();
                 showClosed();
                 if (got == null) {
                     if (record() == null) {                    // deleted: the badge says so, an error would mislead
@@ -392,9 +458,31 @@ public final class ReportsActivity extends Activity {
         }, "anon-thread").start();
     }
 
+    /** "Refreshed 2 min ago · Refresh now" (the whole line taps), or "Refreshing…" while a load runs. */
+    private void showRefreshed() {
+        if (refreshed == null) return;
+        if (loading) {
+            refreshed.setText("Refreshing\u2026");
+            return;
+        }
+        android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder(
+                loadedAt == 0 ? "Not loaded yet" : "Refreshed " + AnonReports.ago(System.currentTimeMillis() - loadedAt));
+        sb.append(" \u00b7 ");
+        int from = sb.length();
+        sb.append("Refresh now");
+        sb.setSpan(new android.text.style.ForegroundColorSpan(Widgets.BLUE), from, sb.length(),
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        refreshed.setText(sb);
+    }
+
+    private static final String LOG_NOTE = "\n\n_\uD83D\uDCCE Full log sent privately_";
+
     /** The report itself (iss, when it loaded) first, then the replies, newest at the bottom and flashed. */
     private void render(JSONObject iss, JSONArray cs, String bot, String tag) {
+        lastIssue = iss;
+        lastComments = cs;
         list.removeAllViews();
+        java.util.List<String> mineTexts = new java.util.ArrayList<>();
         String report = iss == null ? "" : iss.optString("body").trim();
         if (!report.isEmpty()) bubble(true, "Your report · " + localTime(iss.optString("created_at")), report, "report");
         View newest = null;
@@ -407,11 +495,21 @@ public final class ReportsActivity extends Activity {
             String who = mine ? "You" : u != null ? u.optString("login") : "";
             String text = c.optString("body");
             if (mine) {                                       // drop the "Reply from the reporter (tag …)" header
+                boolean withLog = AnonReports.carriedLog(text);
                 int nl = text.indexOf('\n');
                 text = nl < 0 ? "" : text.substring(nl + 1).trim();
+                mineTexts.add(text);
+                if (withLog) text += LOG_NOTE;
             }
             if (text.trim().isEmpty()) continue;
             newest = bubble(mine, who + " · " + localTime(c.optString("created_at")), text, "reply");
+        }
+        for (java.util.Iterator<String[]> it = pending.iterator(); it.hasNext(); ) {
+            String[] p = it.next();
+            boolean arrived = false;
+            for (String m : mineTexts) arrived |= AnonReports.sameReply(m, p[0]);
+            if (arrived) it.remove();
+            else newest = bubble(true, "You · just now", p[0] + (p[1] != null ? LOG_NOTE : ""), "reply");
         }
         status.setVisibility(newest == null ? View.VISIBLE : View.GONE);
         status.setTextColor(Widgets.SUB);
@@ -494,23 +592,81 @@ public final class ReportsActivity extends Activity {
         a.start();
     }
 
+    /**
+     * Builds the latest log (Export log's archive) off the UI thread and shows it as a pill; tapping the pill removes
+     * it. A log over the Worker's limit shows why and isn't attached.
+     */
+    private void attachLog() {
+        int build = ++logBuild;
+        attach.setVisibility(View.GONE);
+        pill("Preparing the log\u2026", Widgets.SUB);
+        new Thread(() -> {
+            java.io.File z = null;
+            try {
+                z = AnonReports.logZip(this);
+            } catch (Exception e) {
+                BLog.log("log_export_error", "err", String.valueOf(e));
+            }
+            java.io.File built = z;
+            runOnUiThread(() -> {
+                if (build != logBuild || isFinishing() || isDestroyed()) {   // removed, or replaced, while it was built
+                    if (built != null) built.delete();
+                    return;
+                }
+                if (built == null) {
+                    pill("Couldn't prepare the log  \u2715", Widgets.RED);
+                    return;
+                }
+                String mb = AnonReports.size(built.length());
+                if (built.length() > AnonReports.MAX_LOG) {
+                    built.delete();
+                    pill("Log too big to send (" + mb + ")  \u2715", Widgets.RED);
+                    return;
+                }
+                logZip = built;
+                BLog.log("anon_reply_log_attached", "bytes", built.length());
+                pill("\uD83D\uDCCE Latest log \u00b7 " + mb + " \u00b7 sent privately  \u2715", Widgets.TEXT);
+                updateSend();
+            });
+        }, "reply-log").start();
+    }
+
+    private void pill(String s, int color) {
+        logPill.setText(s);
+        logPill.setTextColor(color);
+        logPill.setVisibility(View.VISIBLE);
+    }
+
+    /** Removes the attached log (or drops one still being built) and brings the quick action back. */
+    private void dropLog() {
+        logBuild++;
+        if (logZip != null) logZip.delete();
+        logZip = null;
+        if (logPill == null) return;
+        logPill.setVisibility(View.GONE);
+        attach.setVisibility(box.getVisibility() == View.VISIBLE ? View.VISIBLE : View.GONE);
+        updateSend();
+    }
+
     /** Posts the reply through the Worker; on failure the text stays in the box with the error under it. */
     private void send() {
-        String text = box.getText().toString().trim();
-        if (text.isEmpty()) return;
+        String typed = box.getText().toString().trim();
+        java.io.File zip = logZip;
+        if (typed.isEmpty() && zip == null) return;
+        String text = typed.isEmpty() ? "Here's my latest log." : typed;   // the Worker needs some text
         sendingState(true);
         error.setVisibility(View.GONE);
         new Thread(() -> {
             int code = -1;
-            String msg = null;
+            String msg = null, logAnswer = null;
             try {
-                AnonReports.reply(this, issue, text);
+                logAnswer = AnonReports.reply(this, issue, text, zip);
             } catch (IOException e) {
                 code = e instanceof AnonReports.HttpError ? ((AnonReports.HttpError) e).code : 0;
                 msg = AnonReports.errorMessage(e);
             }
             int c = code;
-            String m = msg;
+            String m = msg, logNow = AnonReports.logOutcome(logAnswer);
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed()) return;
                 sendingState(false);
@@ -522,7 +678,16 @@ public final class ReportsActivity extends Activity {
                     return;
                 }
                 box.setText("");
+                if (zip != null) dropLog();
+                if (logNow != null) android.widget.Toast.makeText(this, logNow, android.widget.Toast.LENGTH_LONG).show();
+                // shown at once; GitHub's list can lag a minute, so look again once its cache has expired
+                pending.add(new String[]{text, zip != null && logNow == null ? "log" : null});
+                if (lastComments != null) render(lastIssue, lastComments, prefs.getString("anon_bot", null),
+                        AnonReports.tagOf(AnonReports.deviceId(prefs)));
                 load();
+                scroll.postDelayed(() -> {
+                    if (!pending.isEmpty() && !isFinishing() && !isDestroyed()) load();
+                }, 65_000);
             });
         }, "anon-reply").start();
     }
@@ -544,6 +709,7 @@ public final class ReportsActivity extends Activity {
     private void sendingState(boolean on) {
         sendingNow = on;
         box.setEnabled(!on);
+        logPill.setEnabled(!on);
         sending.setVisibility(on ? View.VISIBLE : View.GONE);
         updateSend();
     }
@@ -551,7 +717,7 @@ public final class ReportsActivity extends Activity {
     /** Send works only with something in the box and no send running; otherwise it's off and dimmed. */
     private void updateSend() {
         if (send == null) return;
-        boolean on = !sendingNow && box.getText().toString().trim().length() > 0;
+        boolean on = !sendingNow && (box.getText().toString().trim().length() > 0 || logZip != null);
         send.setEnabled(on);
         send.setAlpha(on ? 1f : 0.5f);
     }

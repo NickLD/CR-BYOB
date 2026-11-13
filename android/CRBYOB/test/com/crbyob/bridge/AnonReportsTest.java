@@ -146,4 +146,65 @@ public class AnonReportsTest {
         a.put("unread", true);
         assertEquals(0, AnonReports.onlyUnread(new JSONArray().put(a).put(b)));
     }
+
+    @Test public void isMine_alsoWhenTheReplyCarriedALog() throws Exception {
+        String withLog = "**Reply from the reporter** (tag `" + TAG + "`, full log Id: `0123456789abcdef0123456789abcdef`)\n\nhi";
+        assertTrue(AnonReports.isMine(comment(1, "NONE", BOT, "Bot", withLog), BOT, TAG));
+        assertFalse(AnonReports.isDeveloper(comment(1, "NONE", BOT, "Bot", withLog), BOT, TAG));
+        assertFalse(AnonReports.isMine(comment(1, "NONE", BOT, "Bot", withLog.replace(TAG, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")), BOT, TAG));
+    }
+
+    @Test public void frame_isTheJsonLengthBigEndianThenTheJson() {
+        byte[] h = AnonReports.frameHeader("{\"a\":1}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertEquals(4 + 7, h.length);
+        assertEquals(0, h[0]);
+        assertEquals(0, h[1]);
+        assertEquals(0, h[2]);
+        assertEquals(7, h[3]);
+        assertEquals('{', h[4]);
+        assertEquals(300, java.nio.ByteBuffer.wrap(AnonReports.frameHeader(new byte[300])).getInt());
+    }
+
+    @Test public void openReports_skipClosedLockedAndGone() throws Exception {
+        JSONArray a = new JSONArray()
+                .put(report(0, 0).put("n", 30).put("title", "[Device] Otter on Pixel 8"))
+                .put(report(0, 0).put("n", 31).put("closed", true))
+                .put(report(0, 0).put("n", 32).put("locked", true))
+                .put(report(0, 0).put("n", 33).put("gone", true))
+                .put(report(0, 0).put("n", 34));
+        java.util.List<JSONObject> open = AnonReports.openReports(a);
+        assertEquals(2, open.size());
+        assertEquals(34, open.get(0).optInt("n"));     // newest first
+        assertEquals(30, open.get(1).optInt("n"));
+    }
+
+    @Test public void logOutcome_saysWhatHappenedToTheLog() {
+        assertEquals(null, AnonReports.logOutcome(null));
+        assertEquals(null, AnonReports.logOutcome("stored"));
+        assertTrue(AnonReports.logOutcome("refused: too big").contains("too big"));
+        assertTrue(AnonReports.logOutcome("refused: storage full").contains("storage"));
+        assertTrue(AnonReports.logOutcome("refused: whatever").startsWith("The full log wasn't stored"));
+    }
+
+    @Test public void size_inKbUnderAMegabyte() {
+        assertEquals("1 KB", AnonReports.size(300));
+        assertEquals("512 KB", AnonReports.size(512 * 1024));
+        assertEquals("1.4 MB", AnonReports.size(1468006));
+    }
+
+    @Test public void sameReply_ignoresTheWorkersMentionBreaks() {
+        assertTrue(AnonReports.sameReply("Thanks @‍NickLD\n", "Thanks @NickLD"));
+        assertFalse(AnonReports.sameReply("Thanks", "Thanks again"));
+    }
+
+    @Test public void ago_inPlainSteps() {
+        assertEquals("just now", AnonReports.ago(0));
+        assertEquals("just now", AnonReports.ago(1_999));
+        assertEquals("2 s ago", AnonReports.ago(2_000));
+        assertEquals("59 s ago", AnonReports.ago(59_999));
+        assertEquals("1 min ago", AnonReports.ago(60_000));
+        assertEquals("59 min ago", AnonReports.ago(59 * 60_000L + 59_000));
+        assertEquals("1 h ago", AnonReports.ago(60 * 60_000L));
+        assertEquals("2 days ago", AnonReports.ago(2 * 86_400_000L));
+    }
 }
