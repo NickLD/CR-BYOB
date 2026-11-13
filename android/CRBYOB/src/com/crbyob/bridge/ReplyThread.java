@@ -30,6 +30,7 @@ final class ReplyThread {
     private final LinearLayout sending;   // spinner + "Sending…" while a reply goes out
     private AlertDialog dialog;
     private View replyHead;            // divider + "Your reply" above the box
+    private TextView web;              // "Open on GitHub", hidden once the issue is deleted
     private boolean sendingNow;
     private ScrollView scroll;
 
@@ -173,7 +174,7 @@ final class ReplyThread {
         clp.topMargin = dp(12);
         body.addView(check, clp);
 
-        TextView web = text(13, Widgets.BLUE);
+        web = text(13, Widgets.BLUE);
         web.setText("Open on GitHub ›");
         web.setPadding(0, dp(10), 0, dp(2));
         web.setOnClickListener(v -> {
@@ -209,6 +210,7 @@ final class ReplyThread {
         String as = r == null ? "deleted" : AnonReports.closedAs(r);
         note.setText("This report was " + as + " on GitHub, so it no longer takes replies.");
         note.setVisibility(as.isEmpty() ? View.GONE : View.VISIBLE);
+        web.setVisibility(r == null ? View.GONE : View.VISIBLE);
         int vis = as.isEmpty() ? View.VISIBLE : View.GONE;
         box.setVisibility(vis);
         replyHead.setVisibility(vis);
