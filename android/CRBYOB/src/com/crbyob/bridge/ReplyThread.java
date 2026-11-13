@@ -29,6 +29,8 @@ final class ReplyThread {
     private final EditText box;
     private final LinearLayout sending;   // spinner + "Sending…" while a reply goes out
     private AlertDialog dialog;
+    private View replyHead;            // divider + "Your reply" above the box
+    private boolean sendingNow;
     private ScrollView scroll;
 
     /** One report goes straight to its thread; several open a list first. */
@@ -103,11 +105,33 @@ final class ReplyThread {
         status.setPadding(0, dp(8), 0, dp(4));
         body.addView(status);
 
+        // a divider and a label set the reply box apart from the messages above it
+        LinearLayout head = new LinearLayout(a);
+        head.setOrientation(LinearLayout.VERTICAL);
+        View rule = new View(a);
+        rule.setBackgroundColor(Widgets.LINE);
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, Math.max(1, dp(1)));
+        rlp.topMargin = dp(14);
+        head.addView(rule, rlp);
+        TextView label = text(13, Widgets.SUB);
+        label.setText("Your reply");
+        label.setPadding(0, dp(12), 0, 0);
+        head.addView(label);
+        body.addView(head, wide());
+        replyHead = head;
+
         box.setTextColor(Widgets.TEXT);
         box.setHintTextColor(Widgets.GREY);
         box.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15);
-        box.setBackground(Widgets.roundRect(Widgets.LINE, dp(8)));
+        android.graphics.drawable.GradientDrawable boxBg = Widgets.roundRect(0x00000000, dp(8));   // outlined, not
+        boxBg.setStroke(Math.max(1, dp(1.5f)), Widgets.GREY);                                      // filled like a bubble
+        box.setBackground(boxBg);
         box.setPadding(dp(10), dp(8), dp(10), dp(8));
+        box.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int st, int c, int af) { }
+            @Override public void onTextChanged(CharSequence s, int st, int b, int c) { }
+            @Override public void afterTextChanged(android.text.Editable s) { updateSend(); }
+        });
         box.setHint("Reply (public on GitHub)");
         box.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
                 | android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
@@ -178,7 +202,9 @@ final class ReplyThread {
     private void showClosed() {
         int vis = closed() ? View.GONE : View.VISIBLE;
         box.setVisibility(vis);
+        replyHead.setVisibility(vis);
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setVisibility(vis);
+        updateSend();
     }
 
     /** Fetches the comments, marks the report read, and shows the developer's comments and this phone's replies. */
@@ -253,8 +279,10 @@ final class ReplyThread {
             head.setPadding(0, 0, 0, dp(2));
             bubble.addView(head);
             TextView t = text(15, Widgets.TEXT);
-            t.setText(text);
+            t.setText(Markdown.render(a, text, true));   // GitHub comments are Markdown: bold, code, links
+            t.setLinkTextColor(Widgets.BLUE);
             t.setTextIsSelectable(true);
+            t.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());   // after: links stay tappable
             bubble.addView(t);
             LinearLayout.LayoutParams lp = wide();
             lp.topMargin = dp(list.getChildCount() == 0 ? 4 : 8);
@@ -315,10 +343,18 @@ final class ReplyThread {
 
     /** While a reply sends: Send and the box are off and dimmed, and the spinner shows. */
     private void sendingState(boolean on) {
-        android.widget.Button send = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-        send.setEnabled(!on);
-        send.setAlpha(on ? 0.5f : 1f);
+        sendingNow = on;
         box.setEnabled(!on);
         sending.setVisibility(on ? View.VISIBLE : View.GONE);
+        updateSend();
+    }
+
+    /** Send works only with something in the box and no send running; otherwise it's off and dimmed. */
+    private void updateSend() {
+        android.widget.Button send = dialog == null ? null : dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+        if (send == null) return;
+        boolean on = !sendingNow && box.getText().toString().trim().length() > 0;
+        send.setEnabled(on);
+        send.setAlpha(on ? 1f : 0.5f);
     }
 }

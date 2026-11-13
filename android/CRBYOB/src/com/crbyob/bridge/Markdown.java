@@ -41,6 +41,11 @@ final class Markdown {
     }
 
     static CharSequence render(Context c, String md) {
+        return render(c, md, false);
+    }
+
+    /** With `links`, http(s) [links](url) are tappable (the TextView needs a LinkMovementMethod). */
+    static CharSequence render(Context c, String md, boolean links) {
         float d = c.getResources().getDisplayMetrics().density;
         List<Block> blocks = new ArrayList<>();
         Block open = null;              // paragraph or bullet that a following indented line continues
@@ -83,7 +88,7 @@ final class Markdown {
             // blank line between blocks, except inside a list and right under a heading
             if (sb.length() > 0 && prev != 'h' && !(b.type == 'b' && prev == 'b')) sb.append('\n');
             int start = sb.length();
-            appendInline(sb, b.text);
+            appendInline(sb, b.text, links);
             sb.append('\n');
             int end = sb.length();
             if (b.type == 'h') {
@@ -100,7 +105,7 @@ final class Markdown {
         return sb;
     }
 
-    private static void appendInline(SpannableStringBuilder sb, String s) {
+    private static void appendInline(SpannableStringBuilder sb, String s, boolean links) {
         Matcher m = INLINE.matcher(s);
         int last = 0;
         while (m.find()) {
@@ -114,6 +119,8 @@ final class Markdown {
                 sb.setSpan(new TypefaceSpan("monospace"), st, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             } else {
                 sb.append(m.group(4));
+                if (links && m.group(5).matches("(?i)https?://.*"))
+                    sb.setSpan(new android.text.style.URLSpan(m.group(5)), st, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
             last = m.end();
         }
