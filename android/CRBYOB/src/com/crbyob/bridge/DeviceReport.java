@@ -180,6 +180,12 @@ final class DeviceReport {
     }
 
     /** Fills the fields from a dashboard snapshot (may be null), the current session's stats and the build. */
+    /** title with its first `was` replaced by `now`, or null when it no longer contains `was`. */
+    static String titleWithScanner(String title, String was, String now) {
+        int i = title.indexOf(was);
+        return i < 0 ? null : title.substring(0, i) + now + title.substring(i + was.length());
+    }
+
     static Fields collect(Dash.Snap s, SessionStats ss, String appLine, String phone) {
         return collect(s, ss, appLine, phone, null);
     }
@@ -592,6 +598,8 @@ final class DeviceReport {
         private android.widget.EditText title, client, details;
         private String measured = "";   // f.details up to the notes marker: sent above what the person types
         private android.widget.TextView scanner, network, result, error;
+        private android.widget.TextView facts;       // scanner model/firmware and app/phone line, kept current
+        private String titleScanner = "<scanner>";    // the scanner the title names, until the reporter rewrites it
         private android.widget.CheckBox includeLog;
         private LogFiles.Saved saved;                // the log archive saved for this report, null = none
         private android.widget.ScrollView scroll;
@@ -672,6 +680,7 @@ final class DeviceReport {
                         .setTitle(title)
                         .setSingleChoiceItems(options.toArray(new String[0]), options.indexOf(cur), (dd, which) -> {
                             setPick(t, options.get(which));
+                            if (t == scanner) retitle(options.get(which));
                             dd.dismiss();
                         })
                         .setNegativeButton("Cancel", null)
@@ -681,6 +690,15 @@ final class DeviceReport {
             body.addView(t, new android.widget.LinearLayout.LayoutParams(
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
             return t;
+        }
+
+        /** A picked scanner goes into the title in place of "<scanner>" (or the last pick), unless it was rewritten. */
+        private void retitle(String pick) {
+            String now = OTHER.equals(pick) ? "<scanner>" : pick;
+            String t = titleWithScanner(title.getText().toString(), titleScanner, now);
+            if (t == null) return;                    // the reporter wrote their own title
+            title.setText(t);
+            titleScanner = now;
         }
 
         private void setPick(android.widget.TextView t, String value) {
@@ -722,10 +740,8 @@ final class DeviceReport {
             }
             // what the scanner and this phone said, as one read-only summary: it goes in the report as-is
             label("From the scanner and this phone", false);
-            android.widget.TextView facts = text(13, Widgets.SUB);
-            facts.setText((f.scannerDetected ? f.scanner + " (detected over USB) \u00B7 " : "")
-                    + (f.scannerFw.isEmpty() ? "Firmware unknown: plug the scanner in to read it" : "Firmware " + f.scannerFw)
-                    + "\n" + f.appInfo);
+            facts = text(13, Widgets.SUB);
+            facts.setText(factsText());
             facts.setTextIsSelectable(true);
             body.addView(facts);
             label("Network", true);
@@ -806,6 +822,46 @@ final class DeviceReport {
             }
             dialog = d;
             Widgets.showStyled(d);
+            watchScanner.run();
+        }
+
+        /** While the form is open: a scanner plugged in after it opened fills in its model and firmware. */
+        private final Runnable watchScanner = new Runnable() {
+            @Override public void run() {
+                if (dialog == null || !dialog.isShowing()) return;
+                Bridge b = BridgeService.current();
+                Dash.Snap s = b != null ? b.dash.snap : lastSnap;   // the dashboard refreshes it every second
+                Fields now = collect(s, null, f.appInfo, "");
+                boolean changed = false;
+                if (!now.scannerFw.isEmpty() && !now.scannerFw.equals(f.scannerFw)) {
+                    f.scannerFw = now.scannerFw;
+                    changed = true;
+                }
+                if (now.scannerDetected && !f.scannerDetected) {
+                    f.scannerDetected = true;
+                    f.scanner = now.scanner;
+                    if (scanner != null) {                 // the picker shown when none was plugged in
+                        setPick(scanner, now.scanner);
+                        retitle(now.scanner);
+                    }
+                    changed = true;
+                }
+                if (changed) facts.setText(factsText());
+                body.postDelayed(this, 1000);
+            }
+        };
+
+        /** The scanner model and firmware (or, in amber, how to get them) over the app/phone line. */
+        private CharSequence factsText() {
+            android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder();
+            if (f.scannerDetected) sb.append(f.scanner).append(" (detected over USB) · ");
+            if (f.scannerFw.isEmpty()) {
+                int st = sb.length();
+                sb.append("Firmware unknown: plug the scanner in to read it");
+                sb.setSpan(new android.text.style.ForegroundColorSpan(Widgets.AMBER), st, sb.length(),
+                        android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            } else sb.append("Firmware ").append(f.scannerFw);
+            return sb.append('\n').append(f.appInfo);
         }
 
         /**

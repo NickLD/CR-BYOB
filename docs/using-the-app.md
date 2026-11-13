@@ -328,11 +328,13 @@ Public on an anonymous report: the report, every reply, and a reporter tag, a ha
 phone, which links reports from the same phone. Serial numbers, Wi-Fi names, passwords, MAC and IP addresses
 are never included. The server keeps no data and doesn't publish your IP address.
 
-Replies: when the app opens or comes back to the foreground (at most every 15 minutes), it checks your
+Replies: when the app opens or comes back to the foreground (at most every 15 minutes), it checks your open
 anonymous reports on GitHub. If the developer, a maintainer or the project's bot replied, the dashboard shows
-"The developer replied to your report ›". The thread opens in the app, where you can answer, still
+"There is a reply on your report #N ›". The thread opens in the app, where you can answer, still
 anonymously. "View your N submitted device reports ›", under "Tried a scanner or phone? Send a device report ›" at the bottom of the
-dashboard, gets you back to older threads. The *Automatically check for replies in app* switch, shown in every thread, is one setting
-for all your anonymous reports: turning it off in any thread stops the checks for all of them (on by default).
-Comments from other GitHub users aren't shown in the app; *Open on GitHub* shows everything. The checks stop
-once the issue is closed.
+dashboard, opens *Your reports*: every report sent anonymously from this phone, each with its status (Open,
+Resolved, Not planned, Duplicate or Locked), and Back from a thread returns to it. Reports filed with your own
+GitHub account aren't listed: check GitHub for their replies.
+Comments from other GitHub users aren't shown in the app; *View on GitHub* shows everything. A closed or locked
+report takes no more replies, and the checks skip closed reports; opening one re-reads it, so a report reopened
+on GitHub takes replies again. A report deleted on GitHub leaves the list.

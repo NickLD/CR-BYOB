@@ -37,7 +37,7 @@ final class AnonReports {
     }
 
     private static final String K_ID = "anon_id", K_BOT = "anon_bot", K_REPORTS = "anon_reports",
-            K_CHECK = "anon_check_replies", K_LAST = "anon_last_check";
+            K_LAST = "anon_last_check";
     /** Held around every read-modify-write of anon_reports (the background check merges under it too). */
     static final Object LOCK = new Object();
     private static final long CHECK_INTERVAL_MS = 15L * 60 * 1000;
@@ -96,9 +96,10 @@ final class AnonReports {
     static String errorMessage(int httpCode, String serverError) {
         if (httpCode == 0) return "Couldn't reach the report server. Check the connection and try again.";
         if (httpCode == 429) return "Too many reports from this network just now. Try again in a minute.";
-        if (httpCode == 400 || httpCode == 403)          // permanent: the same request gets the same answer
-            return "The report server turned this down (" + httpCode + (serverError != null ? ": " + serverError : "")
-                    + "). Sending the same again won't help.";
+        if (httpCode == 400 || httpCode == 403)          // permanent, so no "try again": the Worker's reason says why
+            return serverError != null && !serverError.isEmpty()
+                    ? Character.toUpperCase(serverError.charAt(0)) + serverError.substring(1) + "."
+                    : "The report server refused this (" + httpCode + ").";
         return "The report server answered " + httpCode + ". Try again later.";
     }
 
@@ -138,14 +139,41 @@ final class AnonReports {
         return false;
     }
 
+    /** Records the issue's state (a reopened issue counts as open again); true when it has comments not yet read. */
     static boolean applyIssue(JSONObject report, int httpCode, JSONObject issue) {
         try {
-            if (httpCode == 404 || httpCode == 410 // 403 is GitHub's rate limit, not a deleted issue
-                    || (issue != null && "closed".equals(issue.optString("state")))) report.put("closed", true);
+            if (httpCode == 404 || httpCode == 410) report.put("gone", true); // 403 is GitHub's rate limit, not a deleted issue
+            if (issue != null) report.put("closed", "closed".equals(issue.optString("state")))
+                    .put("title", issue.optString("title"))         // the list shows it; the developer may edit it
+                    .put("reason", issue.isNull("state_reason") ? "" : issue.optString("state_reason"))
+                    .put("locked", issue.optBoolean("locked"));
             return issue != null && issue.optInt("comments") > report.optInt("seen");
         } catch (JSONException e) {
             return false;
         }
+    }
+
+    /** The issue title for the list, without the "[Device] " every report title starts with; "" before it's known. */
+    static String title(JSONObject r) {
+        String t = r.optString("title").trim();
+        return t.startsWith("[Device] ") ? t.substring(9).trim() : t;
+    }
+
+    /** The status badge: Open, Locked, or how GitHub closed it (Resolved, Not planned, Duplicate, Closed). */
+    static String status(JSONObject r) {
+        if (!r.optBoolean("closed")) return r.optBoolean("locked") ? "Locked" : "Open";
+        switch (r.optString("reason")) {
+            case "completed": return "Resolved";
+            case "not_planned": return "Not planned";
+            case "duplicate": return "Duplicate";
+            default: return "Closed";
+        }
+    }
+
+    /** Deleted issues leave the list: there is nothing left to show for them. */
+    static void dropGone(JSONArray a) {
+        for (int i = a.length() - 1; i >= 0; i--)
+            if (a.optJSONObject(i) != null && a.optJSONObject(i).optBoolean("gone")) a.remove(i);
     }
 
     static void applyComments(JSONObject report, JSONArray comments, String bot, String tag) {
@@ -180,7 +208,7 @@ final class AnonReports {
             s.url = r.getString("url");
             synchronized (LOCK) {
                 JSONArray all = reports(p);
-                all.put(new JSONObject().put("n", s.number).put("seen", 0).put("dev", 0).put("newest", 0)
+                all.put(new JSONObject().put("n", s.number).put("title", title).put("seen", 0).put("dev", 0).put("newest", 0)
                         .put("closed", false).put("unread", false));
                 p.edit().putString(K_BOT, r.optString("bot")).putString(K_REPORTS, all.toString()).apply();
             }
@@ -205,6 +233,14 @@ final class AnonReports {
     static JSONArray comments(int issue) throws IOException {
         try {
             return new JSONArray(http(issueUrl(issue) + "/comments?per_page=100", null, true));
+        } catch (JSONException e) {
+            throw new HttpError(502, "bad answer from GitHub");
+        }
+    }
+
+    static JSONObject issue(int n) throws IOException {
+        try {
+            return new JSONObject(http(issueUrl(n), null, true));
         } catch (JSONException e) {
             throw new HttpError(502, "bad answer from GitHub");
         }
@@ -261,10 +297,10 @@ final class AnonReports {
         }
     }
 
-    /** At most every 15 minutes, if the setting is on; calls onChanged on the UI thread when a report changed. */
+    /** At most every 15 minutes; calls onChanged on the UI thread when a report changed. */
     static void maybeCheck(Activity a, Runnable onChanged) {
         SharedPreferences p = prefs(a);
-        if (!enabled() || !p.getBoolean(K_CHECK, true) || !anyOpen(p)    // none open: don't create the ID
+        if (!enabled() || !anyOpen(p)    // none open: don't create the ID
                 || System.currentTimeMillis() - p.getLong(K_LAST, 0) < CHECK_INTERVAL_MS) return;
         p.edit().putLong(K_LAST, System.currentTimeMillis()).apply();
         new Thread(() -> {
@@ -280,13 +316,13 @@ final class AnonReports {
                     int code = 200;
                     JSONObject issue = null;
                     try {
-                        issue = new JSONObject(http(issueUrl(n), null, true));
+                        issue = issue(n);
                     } catch (HttpError e) {
                         if (e.code != 404 && e.code != 410) throw e; // transient (incl. 403 rate limit): retry next time
                         code = e.code;
                     }
                     if (applyIssue(r, code, issue)) applyComments(r, comments(n), bot, tag);
-                } catch (IOException | JSONException e) {
+                } catch (IOException e) {
                     BLog.log("anon_check_failed", "err", String.valueOf(e));
                 }
                 if (!r.toString().equals(was)) changed.add(r);
@@ -303,12 +339,16 @@ final class AnonReports {
                         try {
                             f.put("seen", r.optInt("seen")).put("newest", r.optLong("newest"))
                                     .put("closed", f.optBoolean("closed") || r.optBoolean("closed"))
+                                    .put("reason", r.optString("reason")).put("locked", r.optBoolean("locked"))
+                                    .put("title", r.optString("title", f.optString("title")))
+                                    .put("gone", r.optBoolean("gone"))
                                     .put("unread", r.optLong("newest") > f.optLong("dev"));
                             any = true;
                         } catch (JSONException ignored) { }
                     }
                 }
                 if (!any) return;
+                dropGone(fresh);
                 saveReports(p, fresh);
             }
             a.runOnUiThread(onChanged);

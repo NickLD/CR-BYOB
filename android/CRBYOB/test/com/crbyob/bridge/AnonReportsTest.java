@@ -54,19 +54,50 @@ public class AnonReportsTest {
         assertFalse(AnonReports.isMine(comment(1, "NONE", BOT, "Bot", ownBody("0".repeat(32))), BOT, TAG));
     }
 
-    @Test public void applyIssue_missingClosesIt() throws Exception {
-        JSONObject r = report(1, 0);
-        assertFalse(AnonReports.applyIssue(r, 404, null));
-        assertTrue(r.getBoolean("closed"));
-    }
-
-    @Test public void applyIssue_410ClosesButRateLimit403DoesNot() throws Exception {
+    @Test public void applyIssue_404And410AreGoneButRateLimit403IsNot() throws Exception {
+        JSONObject missing = report(1, 0);
+        assertFalse(AnonReports.applyIssue(missing, 404, null));
+        assertTrue(missing.optBoolean("gone"));
         JSONObject gone = report(1, 0);
         AnonReports.applyIssue(gone, 410, null);
-        assertTrue(gone.getBoolean("closed"));
+        assertTrue(gone.optBoolean("gone"));
         JSONObject limited = report(1, 0);
         assertFalse(AnonReports.applyIssue(limited, 403, null));
+        assertFalse(limited.optBoolean("gone"));
         assertFalse(limited.getBoolean("closed"));
+    }
+
+    @Test public void dropGone_removesOnlyDeleted() throws Exception {
+        JSONArray a = new JSONArray().put(report(0, 0).put("n", 1).put("gone", true))
+                .put(report(0, 0).put("n", 2)).put(report(0, 0).put("n", 3).put("gone", true));
+        AnonReports.dropGone(a);
+        assertEquals(1, a.length());
+        assertEquals(2, a.getJSONObject(0).getInt("n"));
+    }
+
+    @Test public void title_fromIssueWithoutDevicePrefix() throws Exception {
+        JSONObject r = report(0, 0);
+        assertEquals("", AnonReports.title(r));                  // stored by 0.2.10, not fetched yet
+        AnonReports.applyIssue(r, 200, new JSONObject().put("state", "open")
+                .put("title", "[Device] CR-Scan Otter on Google Pixel 9"));
+        assertEquals("CR-Scan Otter on Google Pixel 9", AnonReports.title(r));
+        assertEquals("Freeform post", AnonReports.title(report(0, 0).put("title", "Freeform post")));
+    }
+
+    @Test public void applyIssue_reasonLockAndReopen() throws Exception {
+        JSONObject r = report(0, 0);
+        assertEquals("Open", AnonReports.status(r));
+        AnonReports.applyIssue(r, 200, new JSONObject().put("state", "closed").put("state_reason", "not_planned"));
+        assertEquals("Not planned", AnonReports.status(r));
+        AnonReports.applyIssue(r, 200, new JSONObject().put("state", "closed").put("state_reason", "completed"));
+        assertEquals("Resolved", AnonReports.status(r));
+        AnonReports.applyIssue(r, 200, new JSONObject().put("state", "open").put("state_reason", JSONObject.NULL));
+        assertFalse(r.getBoolean("closed"));                // reopened: replies and checks resume
+        assertEquals("Open", AnonReports.status(r));
+        AnonReports.applyIssue(r, 200, new JSONObject().put("state", "open").put("locked", true));
+        assertEquals("Locked", AnonReports.status(r));
+        // a report stored by 0.2.10 has no reason
+        assertEquals("Closed", AnonReports.status(report(0, 0).put("closed", true)));
     }
 
     @Test public void applyIssue_commentCount() throws Exception {
@@ -99,11 +130,10 @@ public class AnonReportsTest {
     }
 
     @Test public void errorMessage_400and403AreFinalAndCarryTheServerText() {
-        assertEquals("The report server turned this down (403: not your report). Sending the same again won't help.",
-                AnonReports.errorMessage(403, "not your report"));
-        assertEquals("The report server turned this down (400). Sending the same again won't help.",
-                AnonReports.errorMessage(400, null));
-        assertEquals("The report server turned this down (400: body is too long). Sending the same again won't help.",
+        assertEquals("This report is closed, so it no longer takes replies.",
+                AnonReports.errorMessage(403, "this report is closed, so it no longer takes replies"));
+        assertEquals("The report server refused this (400).", AnonReports.errorMessage(400, null));
+        assertEquals("Body is too long.",
                 AnonReports.errorMessage(new AnonReports.HttpError(400, "HTTP 400", "body is too long")));
         assertEquals(AnonReports.errorMessage(0, null), AnonReports.errorMessage(new java.io.IOException("x")));
     }
