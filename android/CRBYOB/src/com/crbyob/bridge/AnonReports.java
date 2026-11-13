@@ -97,7 +97,7 @@ final class AnonReports {
 
     /** How long ago, for "Refreshed … ago": just now, then seconds, minutes, hours, days. */
     static String ago(long ms) {
-        if (ms < 5_000) return "just now";
+        if (ms < 2_000) return "just now";
         if (ms < 60_000) return (ms / 1000) + " s ago";
         long min = ms / 60_000;
         if (min < 60) return min + " min ago";

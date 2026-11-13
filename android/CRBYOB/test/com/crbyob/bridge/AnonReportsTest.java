@@ -199,8 +199,8 @@ public class AnonReportsTest {
 
     @Test public void ago_inPlainSteps() {
         assertEquals("just now", AnonReports.ago(0));
-        assertEquals("just now", AnonReports.ago(4_999));
-        assertEquals("5 s ago", AnonReports.ago(5_000));
+        assertEquals("just now", AnonReports.ago(1_999));
+        assertEquals("2 s ago", AnonReports.ago(2_000));
         assertEquals("59 s ago", AnonReports.ago(59_999));
         assertEquals("1 min ago", AnonReports.ago(60_000));
         assertEquals("59 min ago", AnonReports.ago(59 * 60_000L + 59_000));
