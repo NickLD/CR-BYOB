@@ -359,6 +359,7 @@ public final class ReportsActivity extends Activity {
                 AnonReports.saveReports(prefs, all);
             }
             JSONArray got = cs;
+            JSONObject report = iss;
             int c = code;
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed()) return;
@@ -373,13 +374,17 @@ public final class ReportsActivity extends Activity {
                             : "GitHub answered " + c + ". Try again later.");
                     return;
                 }
-                render(got, bot, tag);
+                render(report, got, bot, tag);
             });
         }, "anon-thread").start();
     }
 
-    private void render(JSONArray cs, String bot, String tag) {
+    /** The report itself (iss, when it loaded) first, then the replies, newest at the bottom and flashed. */
+    private void render(JSONObject iss, JSONArray cs, String bot, String tag) {
         list.removeAllViews();
+        String report = iss == null ? "" : iss.optString("body").trim();
+        if (!report.isEmpty()) bubble(true, "Your report · " + localTime(iss.optString("created_at")), report, "report");
+        View newest = null;
         for (int i = 0; i < cs.length(); i++) {             // GitHub lists them oldest first
             JSONObject c = cs.optJSONObject(i);
             if (c == null) continue;
@@ -393,32 +398,84 @@ public final class ReportsActivity extends Activity {
                 text = nl < 0 ? "" : text.substring(nl + 1).trim();
             }
             if (text.trim().isEmpty()) continue;
-            // chat-style bubbles: the reporter's own replies tinted blue and set in from the left, the
-            // developer's grey and set in from the right, so who said what reads at a glance
-            LinearLayout bubble = new LinearLayout(this);
-            bubble.setOrientation(LinearLayout.VERTICAL);
-            bubble.setBackground(Widgets.roundRect(mine ? (Widgets.BLUE & 0x00FFFFFF) | 0x33000000 : Widgets.LINE, dp(10)));
-            bubble.setPadding(dp(12), dp(8), dp(12), dp(10));
-            TextView head = text(12, Widgets.SUB);
-            head.setText(who + " · " + localTime(c.optString("created_at")));
-            head.setPadding(0, 0, 0, dp(2));
-            bubble.addView(head);
-            TextView t = text(15, Widgets.TEXT);
-            t.setText(Markdown.render(this, text, true));   // GitHub comments are Markdown: bold, code, links
-            t.setLinkTextColor(Widgets.BLUE);
-            t.setTextIsSelectable(true);
-            t.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());   // after: links stay tappable
-            bubble.addView(t);
-            LinearLayout.LayoutParams lp = wide();
-            lp.topMargin = dp(list.getChildCount() == 0 ? 4 : 8);
-            if (mine) lp.leftMargin = dp(32);
-            else lp.rightMargin = dp(32);
-            list.addView(bubble, lp);
+            newest = bubble(mine, who + " · " + localTime(c.optString("created_at")), text, "reply");
         }
-        status.setVisibility(list.getChildCount() == 0 ? View.VISIBLE : View.GONE);
+        status.setVisibility(newest == null ? View.VISIBLE : View.GONE);
         status.setTextColor(Widgets.SUB);
         status.setText("No replies yet.");
-        scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));   // newest at the bottom, like a chat
+        View flash = newest;
+        scroll.post(() -> {                                   // newest at the bottom, like a chat
+            scroll.fullScroll(View.FOCUS_DOWN);
+            if (flash != null) highlight(flash);
+        });
+    }
+
+    /**
+     * A chat-style bubble: the reporter's own messages tinted blue and set in from the left, the developer's
+     * grey and set in from the right, so who said what reads at a glance. A long text shows its start and a
+     * "Show full report" (or "reply") link.
+     */
+    private View bubble(boolean mine, String header, String text, String what) {
+        LinearLayout bubble = new LinearLayout(this);
+        bubble.setOrientation(LinearLayout.VERTICAL);
+        bubble.setBackground(Widgets.roundRect(mine ? (Widgets.BLUE & 0x00FFFFFF) | 0x33000000 : Widgets.LINE, dp(10)));
+        bubble.setPadding(dp(12), dp(8), dp(12), dp(10));
+        TextView head = text(12, Widgets.SUB);
+        head.setText(header);
+        head.setPadding(0, 0, 0, dp(2));
+        bubble.addView(head);
+        TextView t = text(15, Widgets.TEXT);
+        String start = preview(text);
+        t.setText(Markdown.render(this, start != null ? start : text, true));   // GitHub text is Markdown
+        t.setLinkTextColor(Widgets.BLUE);
+        t.setTextIsSelectable(true);
+        t.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());   // after: links stay tappable
+        bubble.addView(t);
+        if (start != null) {
+            TextView more = text(14, Widgets.BLUE);
+            more.setText("… Show full " + what + " ▾");
+            more.setPadding(0, dp(6), 0, dp(2));
+            more.setOnClickListener(v -> {
+                t.setText(Markdown.render(this, text, true));
+                more.setVisibility(View.GONE);
+            });
+            bubble.addView(more);
+        }
+        LinearLayout.LayoutParams lp = wide();
+        lp.topMargin = dp(list.getChildCount() == 0 ? 4 : 8);
+        if (mine) lp.leftMargin = dp(32);
+        else lp.rightMargin = dp(32);
+        list.addView(bubble, lp);
+        return bubble;
+    }
+
+    /** The first lines of a long text (whole lines, up to 12 and about 800 characters), or null when it's short. */
+    static String preview(String s) {
+        int end = 0;
+        for (int lines = 0; lines < 12 && end < s.length(); lines++) {
+            int nl = s.indexOf('\n', end);
+            int next = nl < 0 ? s.length() : nl + 1;
+            if (next > 800) break;
+            end = next;
+        }
+        if (end == 0) end = Math.min(s.length(), 800);       // one very long first line
+        return end >= s.length() ? null : s.substring(0, end).trim();
+    }
+
+    /** Fades a blue outline in and out over the newest reply, like the docs do for the section they open at. */
+    private void highlight(View v) {
+        android.graphics.drawable.GradientDrawable box = Widgets.roundRect((Widgets.BLUE & 0x00FFFFFF) | 0x24000000, dp(10));
+        box.setStroke(Math.max(1, dp(1.5f)), (Widgets.BLUE & 0x00FFFFFF) | 0x99000000);
+        box.setBounds(0, 0, v.getWidth(), v.getHeight());
+        v.getOverlay().add(box);
+        box.setAlpha(0);
+        android.animation.ValueAnimator a = android.animation.ValueAnimator.ofInt(0, 255, 255, 0);   // in, hold, out: 1 s each
+        a.setDuration(3000);
+        a.addUpdateListener(x -> box.setAlpha((int) x.getAnimatedValue()));
+        a.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator x) { v.getOverlay().remove(box); }
+        });
+        a.start();
     }
 
     /** Posts the reply through the Worker; on failure the text stays in the box with the error under it. */
