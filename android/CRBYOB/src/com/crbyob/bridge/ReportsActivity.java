@@ -68,7 +68,8 @@ public final class ReportsActivity extends Activity {
     private final Runnable tick = new Runnable() {   // keeps "… ago" current while the page shows
         @Override public void run() {
             showRefreshed();
-            scroll.postDelayed(this, 30_000);
+            scroll.removeCallbacks(this);     // one tick at a time, however often onResume runs
+            scroll.postDelayed(this, 1_000);
         }
     };
 
