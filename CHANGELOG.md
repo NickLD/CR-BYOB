@@ -19,6 +19,8 @@ when tagging. A release build fails if its version has no dated section here.
   in app* switch is gone.
 - Device reports: a report reopened on GitHub takes replies again, and the app checks it for answers again.
 - Device reports: a report deleted on GitHub leaves your list instead of showing "GitHub answered 410".
+- Device reports: picking the scanner in the report form now puts it in the title. With no scanner
+  plugged in, the title used to keep a placeholder where the scanner's name belongs.
 - Device reports: when the report server refuses a report or reply, the message now just says why.
 
 ## [0.2.11] - 2026-11-12

@@ -23,6 +23,16 @@ import java.util.regex.Pattern;
 public class DeviceReportTest {
     private static final String REPO = "https://github.com/NickLD/CR-BYOB";
 
+    @Test public void titleWithScanner_fillsThePlaceholderButNotARewrittenTitle() {
+        String t = DeviceReport.titleWithScanner("[Device] <scanner> on Google Pixel 9", "<scanner>", "CR-Scan Otter");
+        assertEquals("[Device] CR-Scan Otter on Google Pixel 9", t);
+        // picking again swaps the last pick; "Other" puts the placeholder back
+        assertEquals("[Device] CR-Scan Raptor on Google Pixel 9",
+                DeviceReport.titleWithScanner(t, "CR-Scan Otter", "CR-Scan Raptor"));
+        assertEquals("[Device] <scanner> on Google Pixel 9", DeviceReport.titleWithScanner(t, "CR-Scan Otter", "<scanner>"));
+        assertEquals(null, DeviceReport.titleWithScanner("My Otter keeps dropping", "<scanner>", "CR-Scan Otter"));
+    }
+
     private static String read(String rel) throws Exception {
         return new String(Files.readAllBytes(new File("../..", rel).toPath()), StandardCharsets.UTF_8);
     }

@@ -180,6 +180,12 @@ final class DeviceReport {
     }
 
     /** Fills the fields from a dashboard snapshot (may be null), the current session's stats and the build. */
+    /** title with its first `was` replaced by `now`, or null when it no longer contains `was`. */
+    static String titleWithScanner(String title, String was, String now) {
+        int i = title.indexOf(was);
+        return i < 0 ? null : title.substring(0, i) + now + title.substring(i + was.length());
+    }
+
     static Fields collect(Dash.Snap s, SessionStats ss, String appLine, String phone) {
         return collect(s, ss, appLine, phone, null);
     }
@@ -592,6 +598,7 @@ final class DeviceReport {
         private android.widget.EditText title, client, details;
         private String measured = "";   // f.details up to the notes marker: sent above what the person types
         private android.widget.TextView scanner, network, result, error;
+        private String titleScanner = "<scanner>";    // the scanner the title names, until the reporter rewrites it
         private android.widget.CheckBox includeLog;
         private LogFiles.Saved saved;                // the log archive saved for this report, null = none
         private android.widget.ScrollView scroll;
@@ -672,6 +679,7 @@ final class DeviceReport {
                         .setTitle(title)
                         .setSingleChoiceItems(options.toArray(new String[0]), options.indexOf(cur), (dd, which) -> {
                             setPick(t, options.get(which));
+                            if (t == scanner) retitle(options.get(which));
                             dd.dismiss();
                         })
                         .setNegativeButton("Cancel", null)
@@ -681,6 +689,15 @@ final class DeviceReport {
             body.addView(t, new android.widget.LinearLayout.LayoutParams(
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
             return t;
+        }
+
+        /** A picked scanner goes into the title in place of "<scanner>" (or the last pick), unless it was rewritten. */
+        private void retitle(String pick) {
+            String now = OTHER.equals(pick) ? "<scanner>" : pick;
+            String t = titleWithScanner(title.getText().toString(), titleScanner, now);
+            if (t == null) return;                    // the reporter wrote their own title
+            title.setText(t);
+            titleScanner = now;
         }
 
         private void setPick(android.widget.TextView t, String value) {
