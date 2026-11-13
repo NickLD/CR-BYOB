@@ -15,6 +15,8 @@ when tagging. A release build fails if its version has no dated section here.
   your list of reports and at the top of its thread. A locked report also no longer offers a reply box.
 - Device reports: your reports and each report's replies open as full pages, and Back from a report
   returns to your list.
+- Device reports: the app always checks your open reports for replies; the *Automatically check for replies
+  in app* switch is gone.
 - Device reports: a report reopened on GitHub takes replies again, and the app checks it for answers again.
 - Device reports: a report deleted on GitHub leaves your list instead of showing "GitHub answered 410".
 - Device reports: when the report server refuses a report or reply, the message now just says why.

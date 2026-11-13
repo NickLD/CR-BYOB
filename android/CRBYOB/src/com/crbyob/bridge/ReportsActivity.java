@@ -99,7 +99,6 @@ public final class ReportsActivity extends Activity {
             about.setPadding(dp(4), 0, dp(4), dp(12));
             body.addView(about);
             body.addView(list, wide());
-            body.addView(checkSwitch(), wide());
         } else {
             buildThread(body);
             root.addView(composer, wide());
@@ -202,17 +201,6 @@ public final class ReportsActivity extends Activity {
             lp.bottomMargin = dp(8);
             list.addView(row, lp);
         }
-    }
-
-    private View checkSwitch() {
-        android.widget.Switch check = new android.widget.Switch(this);
-        check.setText("Automatically check for replies in app");
-        check.setTextColor(Widgets.SUB);
-        check.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        check.setChecked(prefs.getBoolean("anon_check_replies", true));
-        check.setOnCheckedChangeListener((v, on) -> prefs.edit().putBoolean("anon_check_replies", on).apply());
-        check.setPadding(dp(4), dp(12), dp(4), 0);
-        return check;
     }
 
     /** Badge colors, GitHub's where it has one: open green, resolved purple, locked amber, deleted red. */

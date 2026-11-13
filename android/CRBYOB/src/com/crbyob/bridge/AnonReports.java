@@ -37,7 +37,7 @@ final class AnonReports {
     }
 
     private static final String K_ID = "anon_id", K_BOT = "anon_bot", K_REPORTS = "anon_reports",
-            K_CHECK = "anon_check_replies", K_LAST = "anon_last_check";
+            K_LAST = "anon_last_check";
     /** Held around every read-modify-write of anon_reports (the background check merges under it too). */
     static final Object LOCK = new Object();
     private static final long CHECK_INTERVAL_MS = 15L * 60 * 1000;
@@ -290,10 +290,10 @@ final class AnonReports {
         }
     }
 
-    /** At most every 15 minutes, if the setting is on; calls onChanged on the UI thread when a report changed. */
+    /** At most every 15 minutes; calls onChanged on the UI thread when a report changed. */
     static void maybeCheck(Activity a, Runnable onChanged) {
         SharedPreferences p = prefs(a);
-        if (!enabled() || !p.getBoolean(K_CHECK, true) || !anyOpen(p)    // none open: don't create the ID
+        if (!enabled() || !anyOpen(p)    // none open: don't create the ID
                 || System.currentTimeMillis() - p.getLong(K_LAST, 0) < CHECK_INTERVAL_MS) return;
         p.edit().putLong(K_LAST, System.currentTimeMillis()).apply();
         new Thread(() -> {
