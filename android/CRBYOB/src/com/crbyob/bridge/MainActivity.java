@@ -994,7 +994,7 @@ public final class MainActivity extends Activity {
         yourReports = text(13, BLUE, false);
         yourReports.setGravity(Gravity.CENTER_HORIZONTAL);
         yourReports.setPadding(0, dp(4), 0, dp(4));
-        yourReports.setOnClickListener(x -> ReplyThread.openList(this, this::refreshReplies));
+        yourReports.setOnClickListener(x -> ReportsActivity.openList(this));
         yourReports.setVisibility(View.GONE);
         root.addView(yourReports, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -1236,8 +1236,8 @@ public final class MainActivity extends Activity {
         replyCard.addView(replyTitle);
         replyCard.setOnClickListener(v -> {           // one unread report: straight to its thread
             int one = AnonReports.onlyUnread(AnonReports.reports(getSharedPreferences("bridge", MODE_PRIVATE)));
-            if (one > 0) ReplyThread.open(this, one, this::refreshReplies);
-            else ReplyThread.openList(this, this::refreshReplies);
+            if (one > 0) ReportsActivity.open(this, one);
+            else ReportsActivity.openList(this);
         });
         replyCard.setVisibility(View.GONE);
     }
