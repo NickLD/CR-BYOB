@@ -426,14 +426,14 @@ public final class ReportsActivity extends Activity {
         bubble.addView(head);
         TextView t = text(15, Widgets.TEXT);
         String start = preview(text);
-        t.setText(Markdown.render(this, start != null ? start : text, true));   // GitHub text is Markdown
+        t.setText(Markdown.render(this, start != null ? start + " …" : text, true));   // GitHub text is Markdown
         t.setLinkTextColor(Widgets.BLUE);
         t.setTextIsSelectable(true);
         t.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());   // after: links stay tappable
         bubble.addView(t);
         if (start != null) {
             TextView more = text(14, Widgets.BLUE);
-            more.setText("… Show full " + what + " ▾");
+            more.setText("Show full " + what + " ▾");
             more.setPadding(0, dp(6), 0, dp(2));
             more.setOnClickListener(v -> {
                 t.setText(Markdown.render(this, text, true));
@@ -466,12 +466,14 @@ public final class ReportsActivity extends Activity {
     private void highlight(View v) {
         android.graphics.drawable.GradientDrawable box = Widgets.roundRect((Widgets.BLUE & 0x00FFFFFF) | 0x24000000, dp(10));
         box.setStroke(Math.max(1, dp(1.5f)), (Widgets.BLUE & 0x00FFFFFF) | 0x99000000);
-        box.setBounds(0, 0, v.getWidth(), v.getHeight());
         v.getOverlay().add(box);
         box.setAlpha(0);
         android.animation.ValueAnimator a = android.animation.ValueAnimator.ofInt(0, 255, 255, 0);   // in, hold, out: 1 s each
         a.setDuration(3000);
-        a.addUpdateListener(x -> box.setAlpha((int) x.getAnimatedValue()));
+        a.addUpdateListener(x -> {          // sized each frame: the bubble may not be laid out when this starts
+            box.setBounds(0, 0, v.getWidth(), v.getHeight());
+            box.setAlpha((int) x.getAnimatedValue());
+        });
         a.addListener(new android.animation.AnimatorListenerAdapter() {
             @Override public void onAnimationEnd(android.animation.Animator x) { v.getOverlay().remove(box); }
         });
