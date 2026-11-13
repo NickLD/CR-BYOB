@@ -313,8 +313,26 @@ not: that's how scanners move from untested to supported.
 **Still stuck?** Open an [issue](https://github.com/NickLD/CR-BYOB/issues): long-press the version at the
 bottom of the dashboard to copy your app and phone details for it. For whether a scanner or phone works, send a
 [Device report](https://github.com/NickLD/CR-BYOB/issues/new?template=device-report.yml) instead: from the app
-it opens with your scanner, phone and the session's frame rates filled in. With *Include the log* on, it also
+it opens with your scanner, phone and the session's frame rates filled in. With *Include anonymous & redacted logs* on, it also
 fills in the log: the recent log in the GitHub app; in a browser, a digest, with the whole log saved to
 Downloads for you to attach. *Export log* under
 `RAW LOG` makes the same file at any time. Serial numbers, Wi-Fi names, passwords and addresses are removed
 from both.
+
+The report dialog has two ways to send it. **Send Anonymous Report** posts the report through
+the project's report server, which files it as a public GitHub issue labelled `device report` and `anonymous`,
+authored by a bot. With *Include anonymous & redacted logs* on, it carries as much of the recent log as GitHub allows (no zip, no
+digest). **Send Report with my own GitHub account instead** opens the pre-filled GitHub form as described above.
+
+Public on an anonymous report: the report, every reply, and a reporter tag, a hash of a random ID kept on your
+phone, which links reports from the same phone. Serial numbers, Wi-Fi names, passwords, MAC and IP addresses
+are never included. The server keeps no data and doesn't publish your IP address.
+
+Replies: when the app opens or comes back to the foreground (at most every 15 minutes), it checks your
+anonymous reports on GitHub. If the developer, a maintainer or the project's bot replied, the dashboard shows
+"The developer replied to your report ›". The thread opens in the app, where you can answer, still
+anonymously. "View your N submitted device reports ›", under "Tried a scanner or phone? Send a device report ›" at the bottom of the
+dashboard, gets you back to older threads. The *Automatically check for replies in app* switch, shown in every thread, is one setting
+for all your anonymous reports: turning it off in any thread stops the checks for all of them (on by default).
+Comments from other GitHub users aren't shown in the app; *Open on GitHub* shows everything. The checks stop
+once the issue is closed.

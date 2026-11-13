@@ -10,6 +10,16 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+## [0.2.10] - 2026-11-12
+
+### Added
+- Device reports no longer need a GitHub account: *Send Anonymous Report* files it for you in one tap.
+- Replies to your reports show on the dashboard, and you can answer them in the app.
+
+### Changed
+- The device report form is shorter and easier to fill in: measurements are attached automatically and
+  missing fields are marked from the start.
+
 ## [0.2.9] - 2026-11-10
 
 ### Fixed

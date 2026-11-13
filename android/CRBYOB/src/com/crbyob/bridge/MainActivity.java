@@ -278,6 +278,7 @@ public final class MainActivity extends Activity {
 
         buildHeader(root);
         buildReportPrompt(root);
+        buildReplyCard(root);
         buildCrashPrompt(root);
         buildActivity(root);
         root.removeView(linkCard);                                   // Link quality above Streams
@@ -990,6 +991,12 @@ public final class MainActivity extends Activity {
         rep.setPadding(0, dp(8), 0, dp(4));
         rep.setOnClickListener(x -> DeviceReport.open(this));
         root.addView(rep, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        yourReports = text(13, BLUE, false);
+        yourReports.setGravity(Gravity.CENTER_HORIZONTAL);
+        yourReports.setPadding(0, dp(4), 0, dp(4));
+        yourReports.setOnClickListener(x -> ReplyThread.openList(this, this::refreshReplies));
+        yourReports.setVisibility(View.GONE);
+        root.addView(yourReports, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         // Ko-fi button: GitHub builds only (null in the Play flavor).
         View donate = Donate.footerButton(this);
@@ -1206,6 +1213,49 @@ public final class MainActivity extends Activity {
         if (show) reportText.setText(ReportPrompt.message(missing));
         if (show && reportCard.getVisibility() != View.VISIBLE) BLog.log("report_prompt_shown", "missing", missing);
         show(reportCard, show);
+    }
+
+    // ------------------------------------------------------------------ replies to anonymous reports (AnonReports)
+    private LinearLayout replyCard;
+    private TextView replyTitle;
+    private android.animation.ValueAnimator replyPulse;   // the card's outline fading in and out while it shows
+    private TextView yourReports;          // footer: "View your N submitted device reports"
+
+    private void buildReplyCard(LinearLayout root) {
+        replyCard = card(root, null);
+        android.graphics.drawable.GradientDrawable bg = rounded(CARD, dp(16));
+        int stroke = Math.max(1, dp(2));
+        bg.setStroke(stroke, BLUE);
+        replyCard.setBackground(bg);
+        replyPulse = android.animation.ValueAnimator.ofInt(0x22, 0xFF);
+        replyPulse.setDuration(1100);
+        replyPulse.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+        replyPulse.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+        replyPulse.addUpdateListener(an -> bg.setStroke(stroke, (BLUE & 0x00FFFFFF) | ((int) an.getAnimatedValue() << 24)));
+        replyTitle = text(16, TEXT, true);
+        replyCard.addView(replyTitle);
+        replyCard.setOnClickListener(v -> {           // one unread report: straight to its thread
+            int one = AnonReports.onlyUnread(AnonReports.reports(getSharedPreferences("bridge", MODE_PRIVATE)));
+            if (one > 0) ReplyThread.open(this, one, this::refreshReplies);
+            else ReplyThread.openList(this, this::refreshReplies);
+        });
+        replyCard.setVisibility(View.GONE);
+    }
+
+    void refreshReplies() {
+        if (replyCard == null) return;
+        android.content.SharedPreferences p = getSharedPreferences("bridge", MODE_PRIVATE);
+        boolean on = AnonReports.enabled();
+        int n = on ? AnonReports.reports(p).length() : 0;
+        boolean unread = on && AnonReports.anyUnread(p);
+        int one = unread ? AnonReports.onlyUnread(AnonReports.reports(p)) : 0;
+        replyTitle.setText(one > 0 ? "There is a reply on your report #" + one + " ›"
+                : "There are replies on your reports ›");
+        show(replyCard, unread);
+        if (unread && !replyPulse.isStarted()) replyPulse.start();
+        else if (!unread) replyPulse.cancel();
+        yourReports.setText("View your " + n + " submitted device report" + (n == 1 ? "" : "s") + " ›");
+        show(yourReports, n > 0);
     }
 
     // ------------------------------------------------------------------ "CR-BYOB stopped unexpectedly" (crash card)
@@ -1451,6 +1501,8 @@ public final class MainActivity extends Activity {
         h.post(tick);
         if (ssBusy()) h.post(ssPoll);
         if (BridgeService.current() == null) uiWatch.start();   // readiness for the Mirror button even with the bridge off
+        refreshReplies();
+        if (AnonReports.enabled()) AnonReports.maybeCheck(this, this::refreshReplies);
     }
 
     @Override
