@@ -10,13 +10,16 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+## [0.2.13] - 2026-11-13
+
 ### Added
-- Device reports: an anonymous report with *Include logs* ticked sends your whole redacted log privately to the
-  maintainer (up to 5 MB, never published); the public report keeps only its last lines.
-- Device reports: *Attach most recent logs* in a report's reply box sends your latest log privately with the reply.
+- Device reports: *Attach most recent logs* in a report's reply box sends your latest log with the reply.
 - Device reports: *Send a device report* first offers to add your latest logs to a report you already have open,
   instead of starting a new one.
-- Device reports: a report's page says when it last refreshed, with *Refresh now*; a reply you send shows at once.
+- Device reports: a report's page says when it last refreshed, with *Refresh now*.
+
+### Fixed
+- Device reports: a reply you send shows on its report's page right away, instead of up to a minute later.
 
 ## [0.2.12] - 2026-11-13
 
