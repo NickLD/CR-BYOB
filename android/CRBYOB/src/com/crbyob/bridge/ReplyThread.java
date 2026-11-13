@@ -135,7 +135,7 @@ final class ReplyThread {
         body.addView(error);
 
         android.widget.Switch check = new android.widget.Switch(a);
-        check.setText("Check for replies");
+        check.setText("Automatically check for replies in app");
         check.setTextColor(Widgets.SUB);
         check.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13);
         check.setChecked(prefs.getBoolean("anon_check_replies", true));
