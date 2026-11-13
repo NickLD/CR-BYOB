@@ -10,6 +10,12 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+### Fixed
+- Device reports: a closed report now says how it was closed (resolved, not planned) at the top of its
+  thread and in the list. A locked report also no longer offers a reply box.
+- Device reports: a report reopened on GitHub takes replies again, and the app checks it for answers again.
+- Device reports: a report deleted on GitHub leaves your list instead of showing "GitHub answered 410".
+
 ## [0.2.11] - 2026-11-12
 
 ### Fixed

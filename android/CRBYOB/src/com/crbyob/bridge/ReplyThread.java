@@ -25,7 +25,7 @@ final class ReplyThread {
     private final Runnable onChanged;
     private final SharedPreferences prefs;
     private final LinearLayout list;
-    private final TextView status, error;
+    private final TextView note, status, error;   // note: closed, locked or deleted on GitHub
     private final EditText box;
     private final LinearLayout sending;   // spinner + "Sending…" while a reply goes out
     private AlertDialog dialog;
@@ -46,7 +46,8 @@ final class ReplyThread {
             JSONObject r = all.optJSONObject(items.length - 1 - i);
             if (r == null) r = new JSONObject();
             nums[i] = r.optInt("n");
-            items[i] = "#" + nums[i] + " · " + (r.optBoolean("closed") ? "closed" : "open")
+            String as = AnonReports.closedAs(r);
+            items[i] = "#" + nums[i] + " · " + (as.isEmpty() ? "open" : as)
                     + (r.optBoolean("unread") ? " · new replies" : "");
         }
         Widgets.showStyled(new AlertDialog.Builder(a)
@@ -67,6 +68,7 @@ final class ReplyThread {
         prefs = a.getSharedPreferences("bridge", Activity.MODE_PRIVATE);
         list = new LinearLayout(a);
         list.setOrientation(LinearLayout.VERTICAL);
+        note = text(14, Widgets.TEXT);
         status = text(14, Widgets.SUB);
         error = text(14, Widgets.RED);
         box = new EditText(a);
@@ -88,19 +90,22 @@ final class ReplyThread {
         return new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
     }
 
-    private boolean closed() {
+    /** This report as stored, or null once it's dropped because GitHub deleted the issue. */
+    private JSONObject record() {
         JSONArray all = AnonReports.reports(prefs);
         for (int i = 0; i < all.length(); i++) {
             JSONObject r = all.optJSONObject(i);
-            if (r != null && r.optInt("n") == issue) return r.optBoolean("closed");
+            if (r != null && r.optInt("n") == issue) return r;
         }
-        return false;
+        return null;
     }
 
     private void show() {
         LinearLayout body = new LinearLayout(a);
         body.setOrientation(LinearLayout.VERTICAL);
         body.setPadding(dp(20), dp(4), dp(20), dp(8));
+        note.setPadding(0, 0, 0, dp(8));
+        body.addView(note);
         body.addView(list, wide());
         status.setPadding(0, dp(8), 0, dp(4));
         body.addView(status);
@@ -198,24 +203,33 @@ final class ReplyThread {
         load();
     }
 
-    /** Closed issues take no replies: no box, no Send. */
+    /** Closed, locked and deleted issues take no replies: a line says why, and there's no box or Send. */
     private void showClosed() {
-        int vis = closed() ? View.GONE : View.VISIBLE;
+        JSONObject r = record();
+        String as = r == null ? "deleted" : AnonReports.closedAs(r);
+        note.setText("This report was " + as + " on GitHub, so it no longer takes replies.");
+        note.setVisibility(as.isEmpty() ? View.GONE : View.VISIBLE);
+        int vis = as.isEmpty() ? View.VISIBLE : View.GONE;
         box.setVisibility(vis);
         replyHead.setVisibility(vis);
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setVisibility(vis);
         updateSend();
     }
 
-    /** Fetches the comments, marks the report read, and shows the developer's comments and this phone's replies. */
+    /**
+     * Re-reads the issue (it may have been reopened, closed, locked or deleted since the last check) and its
+     * comments, marks the report read, and shows the developer's comments and this phone's replies.
+     */
     private void load() {
         status.setTextColor(Widgets.SUB);
         status.setText("Loading replies…");
         status.setVisibility(View.VISIBLE);
         new Thread(() -> {
+            JSONObject iss = null;
             JSONArray cs = null;
             int code = 0;
             try {
+                iss = AnonReports.issue(issue);
                 cs = AnonReports.comments(issue);
             } catch (IOException e) {
                 code = e instanceof AnonReports.HttpError ? ((AnonReports.HttpError) e).code : 0;
@@ -226,13 +240,13 @@ final class ReplyThread {
                 for (int i = 0; i < all.length(); i++) {
                     JSONObject r = all.optJSONObject(i);
                     if (r == null || r.optInt("n") != issue) continue;
+                    AnonReports.applyIssue(r, iss != null ? 200 : code, iss);   // reopened: background checks resume
                     if (cs != null) {
                         AnonReports.applyComments(r, cs, bot, tag);
                         AnonReports.markRead(r);
-                    } else {
-                        AnonReports.applyIssue(r, code, null);   // 404/410: the issue is gone, stop checking it
                     }
                 }
+                AnonReports.dropGone(all);
                 AnonReports.saveReports(prefs, all);
             }
             JSONArray got = cs;
@@ -243,6 +257,10 @@ final class ReplyThread {
                 if (!dialog.isShowing()) return;
                 showClosed();
                 if (got == null) {
+                    if (record() == null) {                    // deleted: the note says so, an error would mislead
+                        status.setVisibility(View.GONE);
+                        return;
+                    }
                     status.setTextColor(Widgets.RED);
                     status.setText(c == 0 ? "Couldn't reach GitHub. Check the connection and try again."
                             : "GitHub answered " + c + ". Try again later.");
@@ -320,6 +338,7 @@ final class ReplyThread {
                     error.setText(m);
                     error.setVisibility(View.VISIBLE);
                     scroll.post(() -> scroll.smoothScrollTo(0, error.getBottom()));
+                    if (c == 403) load();      // the Worker refuses closed and locked reports: show why, hide the box
                     return;
                 }
                 box.setText("");

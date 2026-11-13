@@ -96,9 +96,10 @@ final class AnonReports {
     static String errorMessage(int httpCode, String serverError) {
         if (httpCode == 0) return "Couldn't reach the report server. Check the connection and try again.";
         if (httpCode == 429) return "Too many reports from this network just now. Try again in a minute.";
-        if (httpCode == 400 || httpCode == 403)          // permanent: the same request gets the same answer
-            return "The report server turned this down (" + httpCode + (serverError != null ? ": " + serverError : "")
-                    + "). Sending the same again won't help.";
+        if (httpCode == 400 || httpCode == 403)          // permanent, so no "try again": the Worker's reason says why
+            return serverError != null && !serverError.isEmpty()
+                    ? Character.toUpperCase(serverError.charAt(0)) + serverError.substring(1) + "."
+                    : "The report server refused this (" + httpCode + ").";
         return "The report server answered " + httpCode + ". Try again later.";
     }
 
@@ -138,14 +139,34 @@ final class AnonReports {
         return false;
     }
 
+    /** Records the issue's state (a reopened issue counts as open again); true when it has comments not yet read. */
     static boolean applyIssue(JSONObject report, int httpCode, JSONObject issue) {
         try {
-            if (httpCode == 404 || httpCode == 410 // 403 is GitHub's rate limit, not a deleted issue
-                    || (issue != null && "closed".equals(issue.optString("state")))) report.put("closed", true);
+            if (httpCode == 404 || httpCode == 410) report.put("gone", true); // 403 is GitHub's rate limit, not a deleted issue
+            if (issue != null) report.put("closed", "closed".equals(issue.optString("state")))
+                    .put("reason", issue.isNull("state_reason") ? "" : issue.optString("state_reason"))
+                    .put("locked", issue.optBoolean("locked"));
             return issue != null && issue.optInt("comments") > report.optInt("seen");
         } catch (JSONException e) {
             return false;
         }
+    }
+
+    /** "" while the report takes replies, else how GitHub ended it ("closed as not planned", "locked"). */
+    static String closedAs(JSONObject r) {
+        if (!r.optBoolean("closed")) return r.optBoolean("locked") ? "locked" : "";
+        switch (r.optString("reason")) {
+            case "completed": return "closed as resolved";
+            case "not_planned": return "closed as not planned";
+            case "duplicate": return "closed as a duplicate";
+            default: return "closed";
+        }
+    }
+
+    /** Deleted issues leave the list: there is nothing left to show for them. */
+    static void dropGone(JSONArray a) {
+        for (int i = a.length() - 1; i >= 0; i--)
+            if (a.optJSONObject(i) != null && a.optJSONObject(i).optBoolean("gone")) a.remove(i);
     }
 
     static void applyComments(JSONObject report, JSONArray comments, String bot, String tag) {
@@ -205,6 +226,14 @@ final class AnonReports {
     static JSONArray comments(int issue) throws IOException {
         try {
             return new JSONArray(http(issueUrl(issue) + "/comments?per_page=100", null, true));
+        } catch (JSONException e) {
+            throw new HttpError(502, "bad answer from GitHub");
+        }
+    }
+
+    static JSONObject issue(int n) throws IOException {
+        try {
+            return new JSONObject(http(issueUrl(n), null, true));
         } catch (JSONException e) {
             throw new HttpError(502, "bad answer from GitHub");
         }
@@ -280,13 +309,13 @@ final class AnonReports {
                     int code = 200;
                     JSONObject issue = null;
                     try {
-                        issue = new JSONObject(http(issueUrl(n), null, true));
+                        issue = issue(n);
                     } catch (HttpError e) {
                         if (e.code != 404 && e.code != 410) throw e; // transient (incl. 403 rate limit): retry next time
                         code = e.code;
                     }
                     if (applyIssue(r, code, issue)) applyComments(r, comments(n), bot, tag);
-                } catch (IOException | JSONException e) {
+                } catch (IOException e) {
                     BLog.log("anon_check_failed", "err", String.valueOf(e));
                 }
                 if (!r.toString().equals(was)) changed.add(r);
@@ -303,12 +332,15 @@ final class AnonReports {
                         try {
                             f.put("seen", r.optInt("seen")).put("newest", r.optLong("newest"))
                                     .put("closed", f.optBoolean("closed") || r.optBoolean("closed"))
+                                    .put("reason", r.optString("reason")).put("locked", r.optBoolean("locked"))
+                                    .put("gone", r.optBoolean("gone"))
                                     .put("unread", r.optLong("newest") > f.optLong("dev"));
                             any = true;
                         } catch (JSONException ignored) { }
                     }
                 }
                 if (!any) return;
+                dropGone(fresh);
                 saveReports(p, fresh);
             }
             a.runOnUiThread(onChanged);
