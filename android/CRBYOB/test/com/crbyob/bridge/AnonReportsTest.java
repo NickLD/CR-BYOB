@@ -148,7 +148,7 @@ public class AnonReportsTest {
     }
 
     @Test public void isMine_alsoWhenTheReplyCarriedALog() throws Exception {
-        String withLog = "**Reply from the reporter** (tag `" + TAG + "`, full log (private): `0123456789abcdef0123456789abcdef`)\n\nhi";
+        String withLog = "**Reply from the reporter** (tag `" + TAG + "`, full log Id: `0123456789abcdef0123456789abcdef`)\n\nhi";
         assertTrue(AnonReports.isMine(comment(1, "NONE", BOT, "Bot", withLog), BOT, TAG));
         assertFalse(AnonReports.isDeveloper(comment(1, "NONE", BOT, "Bot", withLog), BOT, TAG));
         assertFalse(AnonReports.isMine(comment(1, "NONE", BOT, "Bot", withLog.replace(TAG, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")), BOT, TAG));
@@ -190,5 +190,10 @@ public class AnonReportsTest {
         assertEquals("1 KB", AnonReports.size(300));
         assertEquals("512 KB", AnonReports.size(512 * 1024));
         assertEquals("1.4 MB", AnonReports.size(1468006));
+    }
+
+    @Test public void sameReply_ignoresTheWorkersMentionBreaks() {
+        assertTrue(AnonReports.sameReply("Thanks @‍NickLD\n", "Thanks @NickLD"));
+        assertFalse(AnonReports.sameReply("Thanks", "Thanks again"));
     }
 }

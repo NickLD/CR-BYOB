@@ -86,13 +86,18 @@ final class AnonReports {
         JSONObject u = comment.optJSONObject("user");
         String head = "**Reply from the reporter** (tag `" + tag + "`", body = comment.optString("body");
         return u != null && bot != null && bot.equals(u.optString("login"))
-                && (body.startsWith(head + ")") || body.startsWith(head + ", full log (private): `"));
+                && (body.startsWith(head + ")") || body.startsWith(head + ", full log Id: `"));
     }
 
     /** True when this phone's reply carried a log the Worker stored (its header names it). */
     static boolean carriedLog(String body) {
         int nl = body.indexOf('\n');
-        return (nl < 0 ? body : body.substring(0, nl)).contains(", full log (private): `");
+        return (nl < 0 ? body : body.substring(0, nl)).contains(", full log Id: `");
+    }
+
+    /** The same reply text, ignoring the zero-width joiners the Worker puts after each @ and surrounding space. */
+    static boolean sameReply(String posted, String typed) {
+        return posted.replace("\u200D", "").trim().equals(typed.replace("\u200D", "").trim());
     }
 
     /** Reports that still take replies (not closed, locked or deleted), newest first. */

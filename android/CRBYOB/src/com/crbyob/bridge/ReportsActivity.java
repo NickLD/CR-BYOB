@@ -57,6 +57,11 @@ public final class ReportsActivity extends Activity {
     private TextView attach, logPill;    // "Attach most recent logs", and the attached log's pill (tap ✕ to remove)
     private java.io.File logZip;         // the attached log, null when none
     private int logBuild;                // bumped by each attach and remove, so a stale build is dropped
+    // replies sent from here that GitHub's list doesn't show yet (it serves the list cached for up to a minute):
+    // {text, "log" when a log went with it}; shown as "You · just now" until a load finds them
+    private final java.util.List<String[]> pending = new java.util.ArrayList<>();
+    private JSONObject lastIssue;        // the last thread loaded, to redraw it with a pending reply at once
+    private JSONArray lastComments;
 
     private int dp(float v) {
         return Widgets.dp(this, v);
@@ -426,9 +431,14 @@ public final class ReportsActivity extends Activity {
         }, "anon-thread").start();
     }
 
+    private static final String LOG_NOTE = "\n\n_\uD83D\uDCCE Full log sent privately_";
+
     /** The report itself (iss, when it loaded) first, then the replies, newest at the bottom and flashed. */
     private void render(JSONObject iss, JSONArray cs, String bot, String tag) {
+        lastIssue = iss;
+        lastComments = cs;
         list.removeAllViews();
+        java.util.List<String> mineTexts = new java.util.ArrayList<>();
         String report = iss == null ? "" : iss.optString("body").trim();
         if (!report.isEmpty()) bubble(true, "Your report · " + localTime(iss.optString("created_at")), report, "report");
         View newest = null;
@@ -444,10 +454,18 @@ public final class ReportsActivity extends Activity {
                 boolean withLog = AnonReports.carriedLog(text);
                 int nl = text.indexOf('\n');
                 text = nl < 0 ? "" : text.substring(nl + 1).trim();
-                if (withLog) text += "\n\n_\uD83D\uDCCE Full log sent privately_";
+                mineTexts.add(text);
+                if (withLog) text += LOG_NOTE;
             }
             if (text.trim().isEmpty()) continue;
             newest = bubble(mine, who + " · " + localTime(c.optString("created_at")), text, "reply");
+        }
+        for (java.util.Iterator<String[]> it = pending.iterator(); it.hasNext(); ) {
+            String[] p = it.next();
+            boolean arrived = false;
+            for (String m : mineTexts) arrived |= AnonReports.sameReply(m, p[0]);
+            if (arrived) it.remove();
+            else newest = bubble(true, "You · just now", p[0] + (p[1] != null ? LOG_NOTE : ""), "reply");
         }
         status.setVisibility(newest == null ? View.VISIBLE : View.GONE);
         status.setTextColor(Widgets.SUB);
@@ -618,7 +636,14 @@ public final class ReportsActivity extends Activity {
                 box.setText("");
                 if (zip != null) dropLog();
                 if (logNow != null) android.widget.Toast.makeText(this, logNow, android.widget.Toast.LENGTH_LONG).show();
+                // shown at once; GitHub's list can lag a minute, so look again once its cache has expired
+                pending.add(new String[]{text, zip != null && logNow == null ? "log" : null});
+                if (lastComments != null) render(lastIssue, lastComments, prefs.getString("anon_bot", null),
+                        AnonReports.tagOf(AnonReports.deviceId(prefs)));
                 load();
+                scroll.postDelayed(() -> {
+                    if (!pending.isEmpty() && !isFinishing() && !isDestroyed()) load();
+                }, 65_000);
             });
         }, "anon-reply").start();
     }
