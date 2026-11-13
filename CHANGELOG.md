@@ -10,6 +10,8 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+## [0.2.12] - 2026-11-13
+
 ### Added
 - Device reports: each report shows its title and its status (Open, Resolved, Not planned, Locked) as a
   colored badge in your list of reports and on its page.
