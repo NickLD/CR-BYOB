@@ -75,6 +75,15 @@ public class AnonReportsTest {
         assertEquals(2, a.getJSONObject(0).getInt("n"));
     }
 
+    @Test public void title_fromIssueWithoutDevicePrefix() throws Exception {
+        JSONObject r = report(0, 0);
+        assertEquals("", AnonReports.title(r));                  // stored by 0.2.10, not fetched yet
+        AnonReports.applyIssue(r, 200, new JSONObject().put("state", "open")
+                .put("title", "[Device] CR-Scan Otter on Google Pixel 9"));
+        assertEquals("CR-Scan Otter on Google Pixel 9", AnonReports.title(r));
+        assertEquals("Freeform post", AnonReports.title(report(0, 0).put("title", "Freeform post")));
+    }
+
     @Test public void applyIssue_reasonLockAndReopen() throws Exception {
         JSONObject r = report(0, 0);
         assertEquals("Open", AnonReports.status(r));

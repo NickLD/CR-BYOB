@@ -144,12 +144,19 @@ final class AnonReports {
         try {
             if (httpCode == 404 || httpCode == 410) report.put("gone", true); // 403 is GitHub's rate limit, not a deleted issue
             if (issue != null) report.put("closed", "closed".equals(issue.optString("state")))
+                    .put("title", issue.optString("title"))         // the list shows it; the developer may edit it
                     .put("reason", issue.isNull("state_reason") ? "" : issue.optString("state_reason"))
                     .put("locked", issue.optBoolean("locked"));
             return issue != null && issue.optInt("comments") > report.optInt("seen");
         } catch (JSONException e) {
             return false;
         }
+    }
+
+    /** The issue title for the list, without the "[Device] " every report title starts with; "" before it's known. */
+    static String title(JSONObject r) {
+        String t = r.optString("title").trim();
+        return t.startsWith("[Device] ") ? t.substring(9).trim() : t;
     }
 
     /** The status badge: Open, Locked, or how GitHub closed it (Resolved, Not planned, Duplicate, Closed). */
@@ -201,7 +208,7 @@ final class AnonReports {
             s.url = r.getString("url");
             synchronized (LOCK) {
                 JSONArray all = reports(p);
-                all.put(new JSONObject().put("n", s.number).put("seen", 0).put("dev", 0).put("newest", 0)
+                all.put(new JSONObject().put("n", s.number).put("title", title).put("seen", 0).put("dev", 0).put("newest", 0)
                         .put("closed", false).put("unread", false));
                 p.edit().putString(K_BOT, r.optString("bot")).putString(K_REPORTS, all.toString()).apply();
             }
@@ -333,6 +340,7 @@ final class AnonReports {
                             f.put("seen", r.optInt("seen")).put("newest", r.optLong("newest"))
                                     .put("closed", f.optBoolean("closed") || r.optBoolean("closed"))
                                     .put("reason", r.optString("reason")).put("locked", r.optBoolean("locked"))
+                                    .put("title", r.optString("title", f.optString("title")))
                                     .put("gone", r.optBoolean("gone"))
                                     .put("unread", r.optLong("newest") > f.optLong("dev"));
                             any = true;

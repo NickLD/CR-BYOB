@@ -177,22 +177,36 @@ public final class ReportsActivity extends Activity {
             row.setPadding(dp(16), dp(14), dp(16), dp(14));
             row.setBackground(Widgets.roundRect(Widgets.CARD, dp(12)));
             row.setForeground(getDrawable(ripple.resourceId));
-            TextView num = text(16, Widgets.TEXT);
-            num.setText("Report #" + n);
-            row.addView(num);
+            // the title on top (or "Report #N" until it's known), then number, status badge and "New replies"
+            String title = AnonReports.title(r);
+            LinearLayout col = new LinearLayout(this);
+            col.setOrientation(LinearLayout.VERTICAL);
+            TextView head = text(16, Widgets.TEXT);
+            head.setText(title.isEmpty() ? "Report #" + n : title);
+            head.setMaxLines(2);
+            head.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            col.addView(head);
+            LinearLayout meta = new LinearLayout(this);
+            meta.setGravity(Gravity.CENTER_VERTICAL);
+            meta.setPadding(0, dp(6), 0, 0);
+            LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(-2, -2);
+            blp.rightMargin = dp(10);
+            if (!title.isEmpty()) {
+                TextView num = text(14, Widgets.SUB);
+                num.setText("#" + n);
+                meta.addView(num, blp);
+            }
             TextView badge = new TextView(this);
             String s = AnonReports.status(r);
             Widgets.badge(badge, s, statusColor(s));
-            LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(-2, -2);
-            blp.leftMargin = dp(10);
-            row.addView(badge, blp);
+            meta.addView(badge, blp);
             if (r.optBoolean("unread")) {
                 TextView u = text(13, Widgets.BLUE);
                 u.setText("● New replies");
-                row.addView(u, blp);
+                meta.addView(u, blp);
             }
-            View fill = new View(this);
-            row.addView(fill, new LinearLayout.LayoutParams(0, 1, 1));
+            col.addView(meta);
+            row.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
             TextView chev = text(18, Widgets.SUB);
             chev.setText("›");
             row.addView(chev);
