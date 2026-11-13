@@ -12,12 +12,26 @@ import android.view.View;
 /** Small Canvas views for the dashboard (no external libraries). */
 final class Widgets {
     static final int BG = 0xFF0E1116, CARD = 0xFF171B22, LINE = 0xFF2A313C, TEXT = 0xFFE6EDF3, SUB = 0xFF8B949E,
-            GREEN = 0xFF3FB950, BLUE = 0xFF58A6FF, AMBER = 0xFFD29922, RED = 0xFFF85149, GREY = 0xFF6E7681;
+            GREEN = 0xFF3FB950, BLUE = 0xFF58A6FF, AMBER = 0xFFD29922, RED = 0xFFF85149, GREY = 0xFF6E7681,
+            PURPLE = 0xFFA371F7;
 
     private Widgets() {}
 
     static int dp(Context c, float v) {
         return Math.round(v * c.getResources().getDisplayMetrics().density);
+    }
+
+    /** Styles t as a small outlined badge: colored border and text, no fill (a report's status). */
+    static void badge(android.widget.TextView t, String label, int color) {
+        Context c = t.getContext();
+        t.setText(label);
+        t.setTextColor(color);
+        t.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
+        t.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        t.setPadding(dp(c, 8), dp(c, 2), dp(c, 8), dp(c, 2));
+        android.graphics.drawable.GradientDrawable g = roundRect(0x00000000, dp(c, 10));
+        g.setStroke(Math.max(1, dp(c, 1)), color);
+        t.setBackground(g);
     }
 
     static android.graphics.drawable.GradientDrawable roundRect(int color, float radiusPx) {

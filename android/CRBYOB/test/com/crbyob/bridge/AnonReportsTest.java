@@ -77,18 +77,18 @@ public class AnonReportsTest {
 
     @Test public void applyIssue_reasonLockAndReopen() throws Exception {
         JSONObject r = report(0, 0);
-        assertEquals("", AnonReports.closedAs(r));
+        assertEquals("Open", AnonReports.status(r));
         AnonReports.applyIssue(r, 200, new JSONObject().put("state", "closed").put("state_reason", "not_planned"));
-        assertEquals("closed as not planned", AnonReports.closedAs(r));
+        assertEquals("Not planned", AnonReports.status(r));
         AnonReports.applyIssue(r, 200, new JSONObject().put("state", "closed").put("state_reason", "completed"));
-        assertEquals("closed as resolved", AnonReports.closedAs(r));
+        assertEquals("Resolved", AnonReports.status(r));
         AnonReports.applyIssue(r, 200, new JSONObject().put("state", "open").put("state_reason", JSONObject.NULL));
         assertFalse(r.getBoolean("closed"));                // reopened: replies and checks resume
-        assertEquals("", AnonReports.closedAs(r));
+        assertEquals("Open", AnonReports.status(r));
         AnonReports.applyIssue(r, 200, new JSONObject().put("state", "open").put("locked", true));
-        assertEquals("locked", AnonReports.closedAs(r));
+        assertEquals("Locked", AnonReports.status(r));
         // a report stored by 0.2.10 has no reason
-        assertEquals("closed", AnonReports.closedAs(report(0, 0).put("closed", true)));
+        assertEquals("Closed", AnonReports.status(report(0, 0).put("closed", true)));
     }
 
     @Test public void applyIssue_commentCount() throws Exception {

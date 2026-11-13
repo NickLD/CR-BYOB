@@ -152,14 +152,14 @@ final class AnonReports {
         }
     }
 
-    /** "" while the report takes replies, else how GitHub ended it ("closed as not planned", "locked"). */
-    static String closedAs(JSONObject r) {
-        if (!r.optBoolean("closed")) return r.optBoolean("locked") ? "locked" : "";
+    /** The status badge: Open, Locked, or how GitHub closed it (Resolved, Not planned, Duplicate, Closed). */
+    static String status(JSONObject r) {
+        if (!r.optBoolean("closed")) return r.optBoolean("locked") ? "Locked" : "Open";
         switch (r.optString("reason")) {
-            case "completed": return "closed as resolved";
-            case "not_planned": return "closed as not planned";
-            case "duplicate": return "closed as a duplicate";
-            default: return "closed";
+            case "completed": return "Resolved";
+            case "not_planned": return "Not planned";
+            case "duplicate": return "Duplicate";
+            default: return "Closed";
         }
     }
 

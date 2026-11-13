@@ -25,7 +25,7 @@ final class ReplyThread {
     private final Runnable onChanged;
     private final SharedPreferences prefs;
     private final LinearLayout list;
-    private final TextView note, status, error;   // note: closed, locked or deleted on GitHub
+    private final TextView pill, note, status, error;   // pill: status badge; note: why there's no reply box
     private final EditText box;
     private final LinearLayout sending;   // spinner + "Sending…" while a reply goes out
     private AlertDialog dialog;
@@ -41,21 +41,63 @@ final class ReplyThread {
             if (all.length() == 1) open(a, all.optJSONObject(0).optInt("n"), onChanged);
             return;
         }
-        String[] items = new String[all.length()];
-        int[] nums = new int[all.length()];
-        for (int i = 0; i < items.length; i++) {             // newest report first
-            JSONObject r = all.optJSONObject(items.length - 1 - i);
-            if (r == null) r = new JSONObject();
-            nums[i] = r.optInt("n");
-            String as = AnonReports.closedAs(r);
-            items[i] = "#" + nums[i] + " · " + (as.isEmpty() ? "open" : as)
-                    + (r.optBoolean("unread") ? " · new replies" : "");
-        }
-        Widgets.showStyled(new AlertDialog.Builder(a)
+        LinearLayout rows = new LinearLayout(a);
+        rows.setOrientation(LinearLayout.VERTICAL);
+        rows.setPadding(0, Widgets.dp(a, 4), 0, Widgets.dp(a, 4));
+        ScrollView sv = new ScrollView(a);
+        sv.addView(rows);
+        AlertDialog d = new AlertDialog.Builder(a)
                 .setTitle("Your reports")
-                .setItems(items, (d, w) -> open(a, nums[w], onChanged))
+                .setView(sv)
                 .setNegativeButton("Close", null)
-                .create());
+                .create();
+        android.util.TypedValue ripple = new android.util.TypedValue();
+        a.getTheme().resolveAttribute(android.R.attr.selectableItemBackground, ripple, true);
+        for (int i = all.length() - 1; i >= 0; i--) {         // newest report first
+            JSONObject r = all.optJSONObject(i);
+            if (r == null) continue;
+            int n = r.optInt("n");
+            // one row per report: number, status badge, and a blue marker when a reply is unread
+            LinearLayout row = new LinearLayout(a);
+            row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            row.setPadding(Widgets.dp(a, 24), Widgets.dp(a, 12), Widgets.dp(a, 24), Widgets.dp(a, 12));
+            row.setBackgroundResource(ripple.resourceId);
+            TextView num = new TextView(a);
+            num.setText("Report #" + n);
+            num.setTextColor(Widgets.TEXT);
+            num.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16);
+            row.addView(num);
+            TextView b = new TextView(a);
+            String s = AnonReports.status(r);
+            Widgets.badge(b, s, statusColor(s));
+            LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(-2, -2);
+            blp.leftMargin = Widgets.dp(a, 10);
+            row.addView(b, blp);
+            if (r.optBoolean("unread")) {
+                TextView u = new TextView(a);
+                u.setText("● New replies");
+                u.setTextColor(Widgets.BLUE);
+                u.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13);
+                row.addView(u, blp);
+            }
+            row.setOnClickListener(v -> {
+                d.dismiss();
+                open(a, n, onChanged);
+            });
+            rows.addView(row, wide());
+        }
+        Widgets.showStyled(d);
+    }
+
+    /** Badge colors, GitHub's where it has one: open green, resolved purple, locked amber, deleted red. */
+    static int statusColor(String status) {
+        switch (status) {
+            case "Open": return Widgets.GREEN;
+            case "Resolved": return Widgets.PURPLE;
+            case "Locked": return Widgets.AMBER;
+            case "Deleted": return Widgets.RED;
+            default: return Widgets.GREY;   // Not planned, Duplicate, Closed
+        }
     }
 
     static void open(Activity a, int issue, Runnable onChanged) {
@@ -69,7 +111,8 @@ final class ReplyThread {
         prefs = a.getSharedPreferences("bridge", Activity.MODE_PRIVATE);
         list = new LinearLayout(a);
         list.setOrientation(LinearLayout.VERTICAL);
-        note = text(14, Widgets.TEXT);
+        pill = new TextView(a);
+        note = text(13, Widgets.SUB);
         status = text(14, Widgets.SUB);
         error = text(14, Widgets.RED);
         box = new EditText(a);
@@ -105,8 +148,13 @@ final class ReplyThread {
         LinearLayout body = new LinearLayout(a);
         body.setOrientation(LinearLayout.VERTICAL);
         body.setPadding(dp(20), dp(4), dp(20), dp(8));
-        note.setPadding(0, 0, 0, dp(8));
-        body.addView(note);
+        LinearLayout head0 = new LinearLayout(a);            // [badge]  No longer takes replies.
+        head0.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        head0.setPadding(0, 0, 0, dp(8));
+        head0.addView(pill);
+        note.setPadding(dp(10), 0, 0, 0);
+        head0.addView(note);
+        body.addView(head0, wide());
         body.addView(list, wide());
         status.setPadding(0, dp(8), 0, dp(4));
         body.addView(status);
@@ -207,11 +255,14 @@ final class ReplyThread {
     /** Closed, locked and deleted issues take no replies: a line says why, and there's no box or Send. */
     private void showClosed() {
         JSONObject r = record();
-        String as = r == null ? "deleted" : AnonReports.closedAs(r);
-        note.setText("This report was " + as + " on GitHub, so it no longer takes replies.");
-        note.setVisibility(as.isEmpty() ? View.GONE : View.VISIBLE);
+        String s = r == null ? "Deleted" : AnonReports.status(r);
+        boolean shut = !s.equals("Open");
+        Widgets.badge(pill, s, statusColor(s));
+        note.setText(r == null ? "Removed from GitHub." : "No longer takes replies.");
+        note.setVisibility(shut ? View.VISIBLE : View.GONE);
+        if (shut) error.setVisibility(View.GONE);         // a refused reply's error only repeats the badge
         web.setVisibility(r == null ? View.GONE : View.VISIBLE);
-        int vis = as.isEmpty() ? View.VISIBLE : View.GONE;
+        int vis = shut ? View.GONE : View.VISIBLE;
         box.setVisibility(vis);
         replyHead.setVisibility(vis);
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setVisibility(vis);
