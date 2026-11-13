@@ -145,6 +145,22 @@ final class DeviceReport {
         return "";
     }
 
+    /** Lines of log kept in an anonymous report's body when the whole log goes privately with it. */
+    static final int SHORT_TAIL_LINES = 50;
+
+    /**
+     * The Log field of an anonymous report. When the whole log goes privately with it (`fullLogSent`), a short tail
+     * (the setup lines and the last SHORT_TAIL_LINES lines); otherwise the GitHub app's long tail, as before.
+     */
+    static String anonLog(Fields f, boolean fullLogSent, List<String> pinned, List<String> recent) {
+        if (!f.includeLog) return "";
+        if (!fullLogSent) return logFor("", f, true, "", pinned, recent);
+        List<String> tail = recent.subList(Math.max(0, recent.size() - SHORT_TAIL_LINES), recent.size());
+        int room = MAX_BODY - body(f, "").length() - 20;
+        return room < 200 ? "" : LogExport.readable(pinned, tail, "CR-BYOB log (serial numbers, Wi-Fi names, passwords, "
+                + "MAC and IP addresses removed). The whole log was sent privately to the maintainer.", room, new LinkedHashMap<>());
+    }
+
     /** The digest's pointer to the whole log: the saved archive, or Export log when it couldn't be saved. */
     static String fullLogNote(String savedName, String where) {
         return savedName != null ? savedName + " in " + where + ", attach it here"
@@ -538,8 +554,39 @@ final class DeviceReport {
         return s.isEmpty() ? s : Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
 
-    /** Shows the review dialog, filled in from the bridge (running) or the dashboard's last snapshot. */
+    /**
+     * Send a device report: with anonymous reports still open, first offers to add the latest logs to one of them
+     * (its thread opens with the logs attached) instead of starting a new report. A kept draft (Scan first) goes
+     * straight back to the form.
+     */
     static void open(Activity a) {
+        java.util.List<org.json.JSONObject> open = AnonReports.enabled() && draft == null
+                ? AnonReports.openReports(AnonReports.reports(a.getSharedPreferences("bridge", Activity.MODE_PRIVATE)))
+                : new ArrayList<>();
+        if (open.isEmpty()) {
+            openForm(a);
+            return;
+        }
+        String[] items = new String[open.size()];
+        for (int i = 0; i < items.length; i++) {
+            String t = AnonReports.title(open.get(i));
+            items[i] = "#" + open.get(i).optInt("n") + (t.isEmpty() ? "" : " \u00b7 " + t);
+        }
+        BLog.log("device_report_open_reports", "count", items.length);
+        android.app.AlertDialog d = new android.app.AlertDialog.Builder(a)
+                .setTitle("Add your latest logs to an open report?")
+                .setItems(items, (x, which) -> {
+                    BLog.log("device_report_add_to_open");
+                    ReportsActivity.open(a, open.get(which).optInt("n"), true);
+                })
+                .setPositiveButton("Start a new report", (x, w) -> openForm(a))
+                .setNegativeButton("Cancel", null)
+                .create();
+        Widgets.showStyled(d);
+    }
+
+    /** Shows the review dialog, filled in from the bridge (running) or the dashboard's last snapshot. */
+    static void openForm(Activity a) {
         Bridge b = BridgeService.current();
         Dash.Snap s = b != null ? b.dash.snap : lastSnap;
         Fields f = collect(s, SessionStats.cur, AppVersion.bugReportLine(), Build.MANUFACTURER + " " + Build.MODEL, appHealth(a));
@@ -609,6 +656,9 @@ final class DeviceReport {
         private android.widget.Button sendBtn, cancelBtn;   // the anonymous dialog's own buttons, null when anon is off
         private android.widget.LinearLayout sending;          // spinner + "Sending…", shown in the link's place
         private boolean anon;                        // this submit goes to the report Worker, not the GitHub form
+        // the whole log for an anonymous send, built when the form opens so its size can show; null when anon is off
+        private java.util.concurrent.FutureTask<java.io.File> logZip;
+        private android.widget.TextView logNote;
 
         Review(Activity a, Fields f) {
             this.a = a;
@@ -776,13 +826,11 @@ final class DeviceReport {
             clp.topMargin = dp(10);
             body.addView(includeLog, clp);
             // one line; the digest/zip details show in the digest view and when a browser opens the form
-            android.widget.TextView logNote = text(13, Widgets.SUB);
-            android.text.SpannableStringBuilder ln = new android.text.SpannableStringBuilder(
-                    "Recent lines only. It helps most when something doesn't work. ");
-            appendLink(ln, "See it \u203A", this::showDigest);
-            logNote.setText(ln);
+            logNote = text(13, Widgets.SUB);
+            setLogNote(AnonReports.enabled() ? "Preparing the whole log\u2026 " : "Recent lines only. It helps most when something doesn't work. ");
             logNote.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
             body.addView(logNote);
+            if (AnonReports.enabled()) buildLogZip();
             includeLog.setOnCheckedChangeListener((v, on) -> logNote.setAlpha(on ? 1f : 0.5f));
             if (!f.includeLog) logNote.setAlpha(0.5f);
             android.widget.TextView privacy = text(13, Widgets.AMBER);
@@ -814,6 +862,7 @@ final class DeviceReport {
                     submit();                          // sendAnon dismisses only once the send worked
                 });
                 cancelBtn.setOnClickListener(v -> d.dismiss());
+                d.setOnDismissListener(x -> deleteZip());
             } else {
                 d.setOnShowListener(x -> d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
                     anon = false;
@@ -823,6 +872,47 @@ final class DeviceReport {
             dialog = d;
             Widgets.showStyled(d);
             watchScanner.run();
+        }
+
+        private void setLogNote(String s) {
+            android.text.SpannableStringBuilder ln = new android.text.SpannableStringBuilder(s);
+            appendLink(ln, "See it \u203A", this::showDigest);
+            logNote.setText(ln);
+        }
+
+        /** Builds the whole log off the UI thread, then says how big it is and where it goes. */
+        private void buildLogZip() {
+            logZip = new java.util.concurrent.FutureTask<>(() -> AnonReports.logZip(a));
+            new Thread(() -> {
+                logZip.run();
+                String note;
+                try {
+                    long n = logZip.get().length();
+                    String mb = AnonReports.size(n);
+                    note = n <= AnonReports.MAX_LOG
+                            ? "Sent anonymously, the whole log (" + mb + ") goes privately to the maintainer and is never "
+                              + "published; the public report shows only its last lines. "
+                            : "The whole log (" + mb + ") is too big to send, so the report has the recent lines. ";
+                } catch (Exception e) {
+                    BLog.log("log_export_error", "err", String.valueOf(e));
+                    note = "Recent lines only. It helps most when something doesn't work. ";
+                }
+                String done = note;
+                a.runOnUiThread(() -> {
+                    if (logNote != null) setLogNote(done);
+                });
+            }, "report-log-zip").start();
+        }
+
+        /** The built log zip when it can go with the report (built, at most MAX_LOG); waits for the build. Off the UI thread. */
+        private java.io.File zipToSend() {
+            if (logZip == null || !f.includeLog) return null;
+            try {
+                java.io.File z = logZip.get();
+                return z.length() <= AnonReports.MAX_LOG ? z : null;
+            } catch (Exception e) {
+                return null;
+            }
         }
 
         /** While the form is open: a scanner plugged in after it opened fills in its model and firmware. */
@@ -1034,8 +1124,7 @@ final class DeviceReport {
          * stays open, buttons off, until it's done: on failure the person's entries are still there with the error.
          */
         private void sendAnon() {
-            LogFiles.Lines l = LogFiles.lines(a);
-            String issueTitle = f.title, report = body(f, logFor(BuildConfig.REPO_URL, f, true, fullLog(), l.pinned, l.recent));
+            String issueTitle = f.title;
             enableButtons(false);
             error.setVisibility(android.view.View.GONE);
             new Thread(() -> {
@@ -1043,7 +1132,10 @@ final class DeviceReport {
                 int code = 0;
                 String msg = null;
                 try {
-                    s = AnonReports.send(a, issueTitle, report);
+                    LogFiles.Lines l = LogFiles.lines(a);
+                    java.io.File zip = zipToSend();   // the short tail only when the whole log goes along
+                    String report = body(f, anonLog(f, zip != null, l.pinned, l.recent));
+                    s = AnonReports.send(a, issueTitle, report, zip);
                 } catch (java.io.IOException e) {
                     code = e instanceof AnonReports.HttpError ? ((AnonReports.HttpError) e).code : 0;
                     msg = AnonReports.errorMessage(e);
@@ -1075,6 +1167,8 @@ final class DeviceReport {
                         }
                     });
                     msg2.append("\n\nReplies will show on the dashboard.");
+                    String logNow = AnonReports.logOutcome(sent.log);
+                    if (logNow != null) msg2.append("\n\n").append(logNow);
                     android.widget.TextView sentText = text(15, Widgets.TEXT);
                     sentText.setText(msg2);
                     sentText.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
@@ -1087,6 +1181,17 @@ final class DeviceReport {
                     Widgets.showStyled(d);
                 });
             }, "anon-report").start();
+        }
+
+        /** The built zip is only for this form's send: gone once the form closes, sent or not. */
+        private void deleteZip() {
+            if (logZip == null) return;
+            java.util.concurrent.FutureTask<java.io.File> z = logZip;
+            new Thread(() -> {
+                try {
+                    z.get().delete();
+                } catch (Exception ignored) { }
+            }, "report-log-delete").start();
         }
 
         /** Off while a send runs, so it can't go twice or be closed before the result shows. */

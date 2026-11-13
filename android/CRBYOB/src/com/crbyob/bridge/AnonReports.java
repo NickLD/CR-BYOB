@@ -9,6 +9,9 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -26,7 +29,13 @@ import java.security.SecureRandom;
 final class AnonReports {
     private AnonReports() {}
 
-    static final class Sent { int number; String url; }
+    /** log: the Worker's answer about the private log ("stored", "refused: why"), or null when none was sent. */
+    static final class Sent { int number; String url; String log; }
+
+    /** The largest log zip the Worker stores; a bigger one isn't sent and the report keeps the long tail. */
+    static final long MAX_LOG = 5L * 1024 * 1024;
+    /** A report or reply with the log zip after the JSON (crbyob-report-worker's framed request). */
+    private static final String FRAMED = "application/vnd.crbyob.report";
 
     /** code 0 = no connection or timeout, otherwise the HTTP status; serverError = the Worker's {error}, or null. */
     static final class HttpError extends IOException {
@@ -75,8 +84,72 @@ final class AnonReports {
 
     static boolean isMine(JSONObject comment, String bot, String tag) {
         JSONObject u = comment.optJSONObject("user");
+        String head = "**Reply from the reporter** (tag `" + tag + "`", body = comment.optString("body");
         return u != null && bot != null && bot.equals(u.optString("login"))
-                && comment.optString("body").startsWith("**Reply from the reporter** (tag `" + tag + "`)");
+                && (body.startsWith(head + ")") || body.startsWith(head + ", full log (private): `"));
+    }
+
+    /** True when this phone's reply carried a log the Worker stored (its header names it). */
+    static boolean carriedLog(String body) {
+        int nl = body.indexOf('\n');
+        return (nl < 0 ? body : body.substring(0, nl)).contains(", full log (private): `");
+    }
+
+    /** Reports that still take replies (not closed, locked or deleted), newest first. */
+    static java.util.List<JSONObject> openReports(JSONArray a) {
+        java.util.List<JSONObject> open = new java.util.ArrayList<>();
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject r = a.optJSONObject(i);
+            if (r != null && !r.optBoolean("closed") && !r.optBoolean("locked") && !r.optBoolean("gone")) open.add(r);
+        }
+        java.util.Collections.sort(open, (x, y) -> Integer.compare(y.optInt("n"), x.optInt("n")));
+        return open;
+    }
+
+    /** What to tell the person about the private log, from the Worker's answer; null when it was stored (or none sent). */
+    static String logOutcome(String answer) {
+        if (answer == null || answer.equals("stored")) return null;
+        String why = answer.startsWith("refused: ") ? answer.substring(9) : answer;
+        String detail;
+        switch (why) {
+            case "too big": detail = "it was too big"; break;
+            case "storage full": detail = "the report server's storage is full right now"; break;
+            case "storage": detail = "the report server couldn't store it"; break;
+            default: detail = why;
+        }
+        return "The full log wasn't stored: " + detail + ". The report has the recent lines; if the maintainer asks "
+                + "for more, Export log under Events saves it.";
+    }
+
+    /** An upload size for people on mobile data: KB under a megabyte (so a small log never reads "0.0 MB"). */
+    static String size(long bytes) {
+        return bytes < 1024 * 1024 ? Math.max(1, Math.round(bytes / 1024.0)) + " KB"
+                : String.format(java.util.Locale.US, "%.1f MB", bytes / 1048576.0);
+    }
+
+    /** The frame before the zip: the JSON's length (4 bytes, big-endian), then the JSON. */
+    static byte[] frameHeader(byte[] json) {
+        return java.nio.ByteBuffer.allocate(4 + json.length).putInt(json.length).put(json).array();
+    }
+
+    /**
+     * Writes the redacted log archive (the same as Export log) to a new file in the cache, for sending with a report
+     * or reply. Slow for a big log: call it off the UI thread. Delete the file once it's sent.
+     */
+    static File logZip(Context c) throws IOException {
+        File dir = new File(c.getCacheDir(), "report-log");
+        if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("can't create " + dir);
+        File[] old = dir.listFiles();
+        long hourAgo = System.currentTimeMillis() - 3_600_000L;
+        if (old != null) for (File o : old) if (o.lastModified() < hourAgo) o.delete();   // left by a send that never went
+        File f = File.createTempFile("crbyob-log-", ".zip", dir);
+        try (OutputStream os = new FileOutputStream(f)) {
+            LogFiles.write(c, os);
+        } catch (IOException | RuntimeException e) {
+            f.delete();
+            throw e;
+        }
+        return f;
     }
 
     static boolean isDeveloper(JSONObject comment, String bot, String tag) {
@@ -198,41 +271,47 @@ final class AnonReports {
         return c.getSharedPreferences("bridge", Context.MODE_PRIVATE);
     }
 
-    static Sent send(Context c, String title, String body) throws IOException {
+    /** Files the report; with `zip` (at most MAX_LOG), the whole log goes privately to the Worker with it. */
+    static Sent send(Context c, String title, String body, File zip) throws IOException {
         SharedPreferences p = prefs(c);
         try {
             JSONObject r = new JSONObject(http(BuildConfig.REPORT_WORKER_URL + "/report",
-                    new JSONObject().put("id", deviceId(p)).put("title", title).put("body", body).toString(), false));
+                    new JSONObject().put("id", deviceId(p)).put("title", title).put("body", body).toString(), false, zip));
             Sent s = new Sent();
             s.number = r.getInt("number");
             s.url = r.getString("url");
+            s.log = r.optString("log", null);
             synchronized (LOCK) {
                 JSONArray all = reports(p);
                 all.put(new JSONObject().put("n", s.number).put("title", title).put("seen", 0).put("dev", 0).put("newest", 0)
                         .put("closed", false).put("unread", false));
                 p.edit().putString(K_BOT, r.optString("bot")).putString(K_REPORTS, all.toString()).apply();
             }
-            BLog.log("anon_report_sent");   // no issue number: a later log on a GitHub-account report would link the two
+            // no issue number: a later log on a GitHub-account report would link the two
+            BLog.log("anon_report_sent", "log", s.log == null ? "none" : s.log);
             return s;
         } catch (JSONException e) {
             throw new HttpError(502, "bad answer from the report server");
         }
     }
 
-    static void reply(Context c, int issue, String text) throws IOException {
+    /** Posts the reply; with `zip`, the whole log goes privately with it. Returns the Worker's log answer, or null. */
+    static String reply(Context c, int issue, String text, File zip) throws IOException {
         try {
-            http(BuildConfig.REPORT_WORKER_URL + "/reply",
-                    new JSONObject().put("id", deviceId(prefs(c))).put("issue", issue).put("body", text).toString(), false);
-            BLog.log("anon_reply_sent");
+            JSONObject r = new JSONObject(http(BuildConfig.REPORT_WORKER_URL + "/reply",
+                    new JSONObject().put("id", deviceId(prefs(c))).put("issue", issue).put("body", text).toString(), false, zip));
+            String log = r.optString("log", null);
+            BLog.log("anon_reply_sent", "log", log == null ? "none" : log);
+            return log;
         } catch (JSONException e) {
-            throw new HttpError(502, "bad request body");
+            throw new HttpError(502, "bad answer from the report server");
         }
     }
 
     // shortcut: first 100 comments only, page if a report thread ever gets that long
     static JSONArray comments(int issue) throws IOException {
         try {
-            return new JSONArray(http(issueUrl(issue) + "/comments?per_page=100", null, true));
+            return new JSONArray(http(issueUrl(issue) + "/comments?per_page=100", null, true, null));
         } catch (JSONException e) {
             throw new HttpError(502, "bad answer from GitHub");
         }
@@ -240,7 +319,7 @@ final class AnonReports {
 
     static JSONObject issue(int n) throws IOException {
         try {
-            return new JSONObject(http(issueUrl(n), null, true));
+            return new JSONObject(http(issueUrl(n), null, true, null));
         } catch (JSONException e) {
             throw new HttpError(502, "bad answer from GitHub");
         }
@@ -251,18 +330,32 @@ final class AnonReports {
         return "https://api.github.com/repos/" + u.substring(u.indexOf("github.com/") + 11) + "/issues/" + n;
     }
 
-    /** POSTs json (or GETs when null); returns the body of a 2xx answer, else throws HttpError. */
-    private static String http(String url, String json, boolean github) throws IOException {
+    /**
+     * POSTs json (or GETs when null), framed with the zip after it when there is one; returns the body of a 2xx
+     * answer, else throws HttpError.
+     */
+    private static String http(String url, String json, boolean github, File zip) throws IOException {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         try {
             c.setConnectTimeout(15_000);
-            c.setReadTimeout(15_000);
+            c.setReadTimeout(zip != null ? 60_000 : 15_000);   // the Worker stores the zip before it answers
             c.setRequestProperty("User-Agent", "CR-BYOB/" + AppVersion.NAME);
             if (github) {
                 c.setRequestProperty("Accept", "application/vnd.github+json");
                 c.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
             }
-            if (json != null) {
+            if (json != null && zip != null) {
+                byte[] head = frameHeader(json.getBytes(StandardCharsets.UTF_8));
+                c.setDoOutput(true);
+                c.setRequestProperty("Content-Type", FRAMED);
+                // a declared length streams the upload and lets the Worker read it natively (within its CPU limit)
+                c.setFixedLengthStreamingMode((long) head.length + zip.length());
+                try (OutputStream o = c.getOutputStream(); InputStream in = new FileInputStream(zip)) {
+                    o.write(head);
+                    byte[] buf = new byte[65536];
+                    for (int n; (n = in.read(buf)) > 0; ) o.write(buf, 0, n);
+                }
+            } else if (json != null) {
                 c.setDoOutput(true);
                 c.setRequestProperty("Content-Type", "application/json");
                 try (OutputStream o = c.getOutputStream()) { o.write(json.getBytes(StandardCharsets.UTF_8)); }
