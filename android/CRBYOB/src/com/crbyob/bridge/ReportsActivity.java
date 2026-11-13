@@ -10,7 +10,6 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -43,8 +42,9 @@ public final class ReportsActivity extends Activity {
     private SharedPreferences prefs;
     private LinearLayout list;           // the list page's rows, or the thread's messages
     private TextView pill, note, status, error, web;   // pill: status badge; note: why there's no reply box
+    private TextView heading;            // the bar's title: the report's title once known, else "Report #N"
     private EditText box;
-    private Button send;
+    private TextView send;               // a styled label, not a Button: no theme insets or shadow to clip
     private View composer;               // the reply box and Send, pinned under the messages
     private LinearLayout sending;        // spinner + "Sending…" while a reply goes out
     private boolean sendingNow;
@@ -134,6 +134,9 @@ public final class ReportsActivity extends Activity {
         TextView t = text(17, Widgets.TEXT);
         t.setTypeface(Typeface.DEFAULT_BOLD);
         t.setText(title);
+        t.setMaxLines(2);
+        t.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        heading = t;
         bar.addView(t, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         if (issue != 0) {
             web = text(14, Widgets.TEXT);
@@ -241,21 +244,13 @@ public final class ReportsActivity extends Activity {
     }
 
     private void buildThread(LinearLayout body) {
-        LinearLayout head = new LinearLayout(this);          // [badge]  No longer takes replies.
-        head.setGravity(Gravity.CENTER_VERTICAL);
-        head.setPadding(0, 0, 0, dp(8));
-        pill = new TextView(this);
-        head.addView(pill);
-        note = text(13, Widgets.SUB);
-        note.setPadding(dp(10), 0, 0, 0);
-        head.addView(note);
-        body.addView(head, wide());
         body.addView(list, wide());
         status = text(14, Widgets.SUB);
         status.setPadding(0, dp(8), 0, dp(4));
         body.addView(status);
 
-        // the reply box and Send, pinned under the messages so they ride up with the keyboard
+        // the reply box, then #N, the status badge and Send, pinned under the messages so they ride up with the
+        // keyboard; a closed report keeps the bar for its badge, without box or Send
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
         c.setBackgroundColor(Widgets.CARD);
@@ -287,9 +282,21 @@ public final class ReportsActivity extends Activity {
         error.setVisibility(View.GONE);
         c.addView(error);
 
-        LinearLayout row = new LinearLayout(this);               // spinner + "Sending…" left, Send right
-        row.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout row = new LinearLayout(this);               // #N [badge] note … Sending… [Send]
         row.setPadding(0, dp(8), 0, 0);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout meta = new LinearLayout(this);
+        meta.setGravity(Gravity.CENTER_VERTICAL);
+        TextView num = text(14, Widgets.SUB);
+        num.setText("#" + issue);
+        num.setPadding(0, 0, dp(10), 0);
+        meta.addView(num);
+        pill = new TextView(this);
+        meta.addView(pill);
+        note = text(13, Widgets.SUB);
+        note.setPadding(dp(10), 0, 0, 0);
+        meta.addView(note);
+        row.addView(meta, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         sending = new LinearLayout(this);
         sending.setGravity(Gravity.CENTER_VERTICAL);
         android.widget.ProgressBar spin = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleSmall);
@@ -299,12 +306,16 @@ public final class ReportsActivity extends Activity {
         st.setText("Sending…");
         st.setPadding(dp(8), 0, 0, 0);
         sending.addView(st);
-        sending.setVisibility(View.INVISIBLE);   // INVISIBLE, not GONE: it holds Send at the right
-        row.addView(sending, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        send = new Button(this);
+        sending.setVisibility(View.GONE);
+        sending.setPadding(0, 0, dp(10), 0);
+        row.addView(sending);
+        send = text(15, Widgets.BG);
+        send.setTypeface(Typeface.DEFAULT_BOLD);
+        send.setGravity(Gravity.CENTER);
+        send.setBackground(Widgets.roundRect(Widgets.BLUE, dp(10)));
+        send.setPadding(dp(20), dp(10), dp(20), dp(10));
         send.setText("Send");
         row.addView(send);
-        Widgets.styleButton(send, true);
         send.setOnClickListener(v -> send());
         c.addView(row, wide());
         composer = c;
@@ -316,12 +327,14 @@ public final class ReportsActivity extends Activity {
         JSONObject r = record();
         String s = r == null ? "Deleted" : AnonReports.status(r);
         boolean shut = !s.equals("Open");
+        if (r != null && !AnonReports.title(r).isEmpty()) heading.setText(AnonReports.title(r));   // known after the first read
         Widgets.badge(pill, s, statusColor(s));
         note.setText(r == null ? "Removed from GitHub." : "No longer takes replies.");
         note.setVisibility(shut ? View.VISIBLE : View.GONE);
         if (shut) error.setVisibility(View.GONE);         // a refused reply's error only repeats the badge
         web.setVisibility(r == null ? View.GONE : View.VISIBLE);
-        composer.setVisibility(shut ? View.GONE : View.VISIBLE);
+        box.setVisibility(shut ? View.GONE : View.VISIBLE);   // the bar stays: it carries the badge
+        send.setVisibility(shut ? View.GONE : View.VISIBLE);
         updateSend();
     }
 
@@ -413,7 +426,7 @@ public final class ReportsActivity extends Activity {
     /**
      * A chat-style bubble: the reporter's own messages tinted blue and set in from the left, the developer's
      * grey and set in from the right, so who said what reads at a glance. A long text shows its start and a
-     * "Show full report" (or "reply") link.
+     * "… Show full report" (or "reply") link at its end.
      */
     private View bubble(boolean mine, String header, String text, String what) {
         LinearLayout bubble = new LinearLayout(this);
@@ -426,21 +439,22 @@ public final class ReportsActivity extends Activity {
         bubble.addView(head);
         TextView t = text(15, Widgets.TEXT);
         String start = preview(text);
-        t.setText(Markdown.render(this, start != null ? start + " …" : text, true));   // GitHub text is Markdown
+        if (start == null) t.setText(Markdown.render(this, text, true));   // GitHub text is Markdown
+        else {   // the start, then "… Show full report" as a link in the text itself
+            android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder(Markdown.render(this, start, true));
+            while (sb.length() > 0 && Character.isWhitespace(sb.charAt(sb.length() - 1))) sb.delete(sb.length() - 1, sb.length());
+            int from = sb.length() + 1;
+            sb.append(" … Show full ").append(what);
+            sb.setSpan(new android.text.style.ClickableSpan() {
+                @Override public void onClick(View w) { t.setText(Markdown.render(ReportsActivity.this, text, true)); }
+                @Override public void updateDrawState(android.text.TextPaint p) { p.setColor(Widgets.BLUE); }
+            }, from, sb.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            t.setText(sb);
+        }
         t.setLinkTextColor(Widgets.BLUE);
         t.setTextIsSelectable(true);
         t.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());   // after: links stay tappable
         bubble.addView(t);
-        if (start != null) {
-            TextView more = text(14, Widgets.BLUE);
-            more.setText("Show full " + what + " ▾");
-            more.setPadding(0, dp(6), 0, dp(2));
-            more.setOnClickListener(v -> {
-                t.setText(Markdown.render(this, text, true));
-                more.setVisibility(View.GONE);
-            });
-            bubble.addView(more);
-        }
         LinearLayout.LayoutParams lp = wide();
         lp.topMargin = dp(list.getChildCount() == 0 ? 4 : 8);
         if (mine) lp.leftMargin = dp(32);
@@ -530,7 +544,7 @@ public final class ReportsActivity extends Activity {
     private void sendingState(boolean on) {
         sendingNow = on;
         box.setEnabled(!on);
-        sending.setVisibility(on ? View.VISIBLE : View.INVISIBLE);
+        sending.setVisibility(on ? View.VISIBLE : View.GONE);
         updateSend();
     }
 

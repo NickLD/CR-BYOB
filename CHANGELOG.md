@@ -10,18 +10,27 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
-### Fixed
-- Device reports: each report shows its status (Open, Resolved, Not planned, Locked) as a colored badge in
-  your list of reports and at the top of its thread. A locked report also no longer offers a reply box.
-- Device reports: your reports and each report's replies open as full pages, and Back from a report
-  returns to your list.
+### Added
+- Device reports: each report shows its title and its status (Open, Resolved, Not planned, Locked) as a
+  colored badge in your list of reports and on its page.
+- Device reports: a report's page starts with the report you sent. Long reports and replies show their
+  first lines with "… Show full report", and the newest reply is highlighted when the page opens.
+
+### Changed
+- Device reports: your reports and each report open as full pages, and Back from a report returns to your
+  list.
 - Device reports: the app always checks your open reports for replies; the *Automatically check for replies
   in app* switch is gone.
+
+### Fixed
+- Device reports: a locked report no longer offers a reply box.
 - Device reports: a report reopened on GitHub takes replies again, and the app checks it for answers again.
 - Device reports: a report deleted on GitHub leaves your list instead of showing "GitHub answered 410".
-- Device reports: picking the scanner in the report form now puts it in the title. With no scanner
-  plugged in, the title used to keep a placeholder where the scanner's name belongs.
 - Device reports: when the report server refuses a report or reply, the message now just says why.
+- Device reports: an empty log section in a report no longer shows stray code markers.
+- Device report form: plugging in the scanner while the form is open fills in its model and firmware
+  without closing and reopening the form. Picking the scanner now also puts it in the title, which used
+  to keep a placeholder where the scanner's name belongs.
 
 ## [0.2.11] - 2026-11-12
 
