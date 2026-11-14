@@ -16,6 +16,8 @@ when tagging. A release build fails if its version has no dated section here.
 
 ### Changed
 - Device reports: reduced unexpected delays before the app notices a reply on a report you sent.
+- Wi-Fi Direct on Android 8 and 9 now tries to start on 5 GHz: your Wi-Fi's own 5 GHz channel, then channel
+  36, then 149. If the phone refuses all of them, it falls back to the phone's own choice (often 2.4 GHz).
 
 ## [0.2.13] - 2026-11-13
 
