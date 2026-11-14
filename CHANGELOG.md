@@ -13,6 +13,7 @@ when tagging. A release build fails if its version has no dated section here.
 ### Fixed
 - Plugging in the scanner while the phone is locked no longer crashes CR-BYOB on Android 12 and newer. The
   bridge now starts when you unlock the phone.
+- Wi-Fi Direct on Android 8 and 9 now tries to start on 5 GHz when available, like on newer Android versions.
 
 ### Changed
 - Device reports: reduced unexpected delays before the app notices a reply on a report you sent.
