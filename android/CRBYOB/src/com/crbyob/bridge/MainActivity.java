@@ -54,6 +54,14 @@ public final class MainActivity extends Activity {
             h.postDelayed(this, 1000);
         }
     };
+    /** Report replies while the dashboard stays open: looked at every minute, fetched every 15. */
+    private final Runnable replyCheck = new Runnable() {
+        @Override
+        public void run() {
+            AnonReports.maybeCheck(MainActivity.this, AnonReports.CHECK_INTERVAL_MS, MainActivity.this::refreshReplies);
+            h.postDelayed(this, 60_000);
+        }
+    };
 
     // header
     private OrbView orb;
@@ -1406,9 +1414,19 @@ public final class MainActivity extends Activity {
         h.postDelayed(this::refresh, 300);
     }
 
+    /** A start Android refused; retried at the next onResume. */
+    private boolean startPending;
+
     private void startBridge() {
         Intent s = new Intent(this, BridgeService.class).setAction(BridgeService.ACTION_START);
-        startForegroundService(s);
+        try {
+            startForegroundService(s);
+        } catch (IllegalStateException e) {
+            // ForegroundServiceStartNotAllowedException (12+): a USB attach reached onNewIntent (or even onResume)
+            // while the screen was locked, so we don't count as foreground yet
+            BLog.log("bridge_start_deferred", "err", e.getClass().getSimpleName());
+            startPending = true;
+        }
     }
 
     private void buildStartStop(LinearLayout c) {
@@ -1501,8 +1519,10 @@ public final class MainActivity extends Activity {
         h.post(tick);
         if (ssBusy()) h.post(ssPoll);
         if (BridgeService.current() == null) uiWatch.start();   // readiness for the Mirror button even with the bridge off
+        if (startPending) { startPending = false; startBridge(); }
         refreshReplies();
-        if (AnonReports.enabled()) AnonReports.maybeCheck(this, this::refreshReplies);
+        AnonReports.maybeCheck(this, AnonReports.RESUME_GAP_MS, this::refreshReplies);   // launched or brought back
+        h.postDelayed(replyCheck, 60_000);
     }
 
     @Override
@@ -1510,6 +1530,7 @@ public final class MainActivity extends Activity {
         super.onPause();
         h.removeCallbacks(tick);
         h.removeCallbacks(ssPoll);
+        h.removeCallbacks(replyCheck);
         uiWatch.stop();
     }
 
