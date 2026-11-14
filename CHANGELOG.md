@@ -10,6 +10,13 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+### Fixed
+- Plugging in the scanner while the phone is locked no longer crashes CR-BYOB on Android 12 and newer. The
+  bridge now starts when you unlock the phone.
+
+### Changed
+- Device reports: reduced unexpected delays before the app notices a reply on a report you sent.
+
 ## [0.2.13] - 2026-11-13
 
 ### Added

@@ -49,7 +49,8 @@ final class AnonReports {
             K_LAST = "anon_last_check";
     /** Held around every read-modify-write of anon_reports (the background check merges under it too). */
     static final Object LOCK = new Object();
-    private static final long CHECK_INTERVAL_MS = 15L * 60 * 1000;
+    /** Minimum gap between background checks: while the dashboard stays open, and when it comes back up. */
+    static final long CHECK_INTERVAL_MS = 15L * 60 * 1000, RESUME_GAP_MS = 60_000;
 
     static boolean enabled() { return !BuildConfig.REPORT_WORKER_URL.isEmpty(); }
 
@@ -407,11 +408,11 @@ final class AnonReports {
         }
     }
 
-    /** At most every 15 minutes; calls onChanged on the UI thread when a report changed. */
-    static void maybeCheck(Activity a, Runnable onChanged) {
+    /** When at least minGapMs passed since the last check; calls onChanged on the UI thread when a report changed. */
+    static void maybeCheck(Activity a, long minGapMs, Runnable onChanged) {
         SharedPreferences p = prefs(a);
         if (!enabled() || !anyOpen(p)    // none open: don't create the ID
-                || System.currentTimeMillis() - p.getLong(K_LAST, 0) < CHECK_INTERVAL_MS) return;
+                || System.currentTimeMillis() - p.getLong(K_LAST, 0) < minGapMs) return;
         p.edit().putLong(K_LAST, System.currentTimeMillis()).apply();
         new Thread(() -> {
             JSONArray all = reports(p);
