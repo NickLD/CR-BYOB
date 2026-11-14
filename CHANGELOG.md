@@ -10,8 +10,6 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
-## [0.2.14] - 2026-11-14
-
 ### Fixed
 - Plugging in the scanner while the phone is locked no longer crashes CR-BYOB on Android 12 and newer. The
   bridge now starts when you unlock the phone.
