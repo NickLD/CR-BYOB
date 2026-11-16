@@ -10,6 +10,11 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+### Fixed
+- Device reports and session stats: a scanner that drops and comes back within a second is now counted as a
+  disconnect, and pressing Stop is no longer counted as one. The data average and total sent no longer fall to
+  zero after the scanner reconnects.
+
 ## [0.2.14] - 2026-11-14
 
 ### Fixed

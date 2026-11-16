@@ -92,7 +92,7 @@ final class SessionStats {
             usbDetach = new AtomicLong(), usbAttach = new AtomicLong(), brownouts = new AtomicLong(),
             mirrorConnects = new AtomicLong(), uvcErrors = new AtomicLong(),
             stalledClosed = new AtomicLong(), takeovers = new AtomicLong(), peerCleanups = new AtomicLong(),
-            detachStreaming = new AtomicLong();  // of usbDetach: the scanner went while video was streaming
+            detachStreaming = new AtomicLong();  // of usbDetach: the scanner went while (or just after) video was streaming
     // phone: time on external power vs battery (sampled once a second), worst thermal status (-1 unknown)
     volatile long poweredMs, batteryMs;
     volatile int thermalMax = -1;
@@ -199,6 +199,24 @@ final class SessionStats {
         long s = ms / 1000;
         return s >= 3600 ? String.format(Locale.US, "%dh %02dm", s / 3600, (s / 60) % 60)
                 : s >= 60 ? String.format(Locale.US, "%dm %02ds", s / 60, s % 60) : s + " s";
+    }
+
+    /**
+     * One sample of the bridge's running byte total. The total falls when the scanner is reopened (its RTSP servers
+     * start again from zero), so only increases are added: a fall must not take the session's bytes with it.
+     */
+    void addSent(long prevTotal, long total) {
+        if (bytesAtStart < 0) {
+            bytesAtStart = 0;
+            bytesNow = 0;
+        } else if (total > prevTotal) bytesNow += total - prevTotal;
+    }
+
+    /** The open scanner was detached. streamedRecently: video within the last few seconds (streams fail before the detach). */
+    void countDetach(boolean streamedRecently, boolean onBattery) {
+        usbDetach.incrementAndGet();
+        if (streamedRecently) detachStreaming.incrementAndGet();
+        if (onBattery) brownouts.incrementAndGet();
     }
 
     double gb() {
