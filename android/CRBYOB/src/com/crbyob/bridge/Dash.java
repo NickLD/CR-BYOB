@@ -112,7 +112,9 @@ final class Dash {
     private static final SimpleDateFormat HMS = new SimpleDateFormat("HH:mm:ss", Locale.US);
 
     // previous state for event detection
-    private Boolean wasScanner, wasPc, wasStreaming, wasPowered;
+    private Boolean wasPc, wasStreaming, wasPowered;
+    private int seenOpens, seenDetaches;    // of Bridge.scannerOpens / scannerDetaches, already turned into events
+    private long lastVideoNs, prevTotalBytes;
     private int wasK = 1, wasP2pClients = -1, wasScore = -2, scoreHold;
     private boolean brownOut;
     private PowerManager power;         // thermal status (Android 10+)
@@ -436,8 +438,8 @@ final class Dash {
         // ---- sticky session stats (once a second; no allocation)
         SessionStats ss = SessionStats.cur;
         long dtMs = Math.round(dt * 1000);
-        if (ss.bytesAtStart < 0) ss.bytesAtStart = s.totalBytes;
-        ss.bytesNow = s.totalBytes;
+        ss.addSent(prevTotalBytes, s.totalBytes);
+        prevTotalBytes = s.totalBytes;
         if (anyVideo) ss.streamMs += dtMs;
         if (total > ss.peakMbps) ss.peakMbps = total;
         for (int i = 0; i < 3; i++) {
@@ -577,18 +579,18 @@ final class Dash {
 
         // ---- events from transitions
         boolean streaming = anyVideo;
-        if (wasScanner != null && wasScanner != s.scanner) {
-            if (s.scanner) {
-                brownOut = false;
-                SessionStats.cur.usbAttach.incrementAndGet();
-                event("Scanner connected" + (s.scannerFw != null ? " (fw " + s.scannerFw + ")" : ""));
-            } else {
-                brownOut = !s.powered;
-                SessionStats.cur.usbDetach.incrementAndGet();
-                if (Boolean.TRUE.equals(wasStreaming)) SessionStats.cur.detachStreaming.incrementAndGet();
-                if (brownOut) SessionStats.cur.brownouts.incrementAndGet();
-                event(brownOut ? "Scanner unplugged while the phone was on battery (likely brown-out)" : "Scanner unplugged");
-            }
+        if (streaming) lastVideoNs = now;
+        // Detaches before opens: a scanner that dropped and came back since the last sample reads as both, in order.
+        for (int n = b.scannerDetaches.get(); seenDetaches < n; seenDetaches++) {
+            brownOut = !s.powered;
+            // the streams fail a few seconds before Android reports the scanner gone
+            SessionStats.cur.countDetach(lastVideoNs != 0 && now - lastVideoNs <= 10_000_000_000L, brownOut);
+            event(brownOut ? "Scanner unplugged while the phone was on battery (likely brown-out)" : "Scanner unplugged");
+        }
+        for (int n = b.scannerOpens.get(); seenOpens < n; seenOpens++) {
+            brownOut = false;
+            SessionStats.cur.usbAttach.incrementAndGet();
+            event("Scanner connected" + (s.scannerFw != null ? " (fw " + s.scannerFw + ")" : ""));
         }
         if (wasPowered != null && wasPowered != s.powered)
             event(s.powered ? "External power connected" : "Phone on battery: scanner may disconnect");
@@ -634,7 +636,6 @@ final class Dash {
                 sl.rssiN++;
             } else if (!net.isEmpty()) sl.linkNet = net;
         }
-        wasScanner = s.scanner;
         wasPowered = s.powered;
         wasPc = pc;
         wasStreaming = streaming;
