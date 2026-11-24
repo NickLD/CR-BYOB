@@ -10,8 +10,9 @@ port unless the phone's section names another scanner.
 | [Google Pixel 5](#google-pixel-5) | 14 | ✅ | 🟡 | 🟡 | ⚠️ | [@NickLD](https://github.com/NickLD) |
 | [Samsung Galaxy S23 Ultra](#samsung-galaxy-s23-ultra) | 16 | — | — | — | ✅ | [@lihomanovdv](https://github.com/lihomanovdv) |
 | [Samsung Galaxy Z Flip 8](#samsung-galaxy-z-flip-8) | 17 | — | ✅ | — | — | [@SelfMadeDiesel](https://github.com/SelfMadeDiesel) |
+| [Samsung Galaxy S24 FE](#samsung-galaxy-s24-fe) | 17 | — | — | — | ✅* | [anonymous report](https://github.com/NickLD/CR-BYOB/issues/30) |
 
-✅ Full performance &nbsp;·&nbsp; 🟡 Works, with limits &nbsp;·&nbsp; ⚠️ Not recommended &nbsp;·&nbsp; — Not tested
+✅ Full performance &nbsp;·&nbsp; 🟡 Works, with limits &nbsp;·&nbsp; ⚠️ Not recommended &nbsp;·&nbsp; — Not tested &nbsp;·&nbsp; ✅* Works per the report, with an unconfirmed note in the phone's section
 
 At full rate the Otter's three video streams need about **265 Mbit/s** between the phone and the PC, so the
 phone's network hardware matters as much as its processor. See
@@ -88,3 +89,16 @@ Android 17 · Reported by [@SelfMadeDiesel](https://github.com/SelfMadeDiesel) (
 | This phone only (Local Mobile App Scanning) | — Not tested |
 
 Measured over 7 minutes of streaming.
+
+## Samsung Galaxy S24 FE
+
+Android 17 · Reported by [anonymous report](https://github.com/NickLD/CR-BYOB/issues/30) ([#30](https://github.com/NickLD/CR-BYOB/issues/30))
+
+| Connection | Result |
+|---|---|
+| Ethernet | — Not tested |
+| Wi-Fi | — Not tested |
+| Wi-Fi Direct | — Not tested |
+| This phone only (Local Mobile App Scanning) | ✅* Preview and a full scan on the `Boost` frame-rate setting: about 20 fps, every frame sent. *Unconfirmed: streams ran well below the requested frame rate in the report's log ([asked](https://github.com/NickLD/CR-BYOB/issues/30#issuecomment-6862428037)). |
+
+From a device report on CR-BYOB 0.2.12 with scanner firmware 1.2.2.
