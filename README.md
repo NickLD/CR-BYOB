@@ -99,8 +99,9 @@ scanner's streams need more bandwidth than USB 2 provides.
 | [Google Pixel 5](docs/phones.md#google-pixel-5) | 14 | ✅ | 🟡 | 🟡 | ⚠️ | [@NickLD](https://github.com/NickLD) |
 | [Samsung Galaxy S23 Ultra](docs/phones.md#samsung-galaxy-s23-ultra) | 16 | — | — | — | ✅ | [@lihomanovdv](https://github.com/lihomanovdv) |
 | [Samsung Galaxy Z Flip 8](docs/phones.md#samsung-galaxy-z-flip-8) | 17 | — | ✅ | — | — | [@SelfMadeDiesel](https://github.com/SelfMadeDiesel) |
+| [Samsung Galaxy S24 FE](docs/phones.md#samsung-galaxy-s24-fe) | 17 | — | — | — | ✅* | [anonymous report](https://github.com/NickLD/CR-BYOB/issues/30) |
 
-✅ Full performance &nbsp;·&nbsp; 🟡 Works, with limits &nbsp;·&nbsp; ⚠️ Not recommended &nbsp;·&nbsp; — Not tested &nbsp;·&nbsp;
+✅ Full performance &nbsp;·&nbsp; 🟡 Works, with limits &nbsp;·&nbsp; ⚠️ Not recommended &nbsp;·&nbsp; — Not tested &nbsp;·&nbsp; ✅* Works per the report, with an unconfirmed note in the phone's section &nbsp;·&nbsp;
 **[Notes per phone](docs/phones.md)**
 
 > [!TIP]
