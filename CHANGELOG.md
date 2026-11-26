@@ -10,10 +10,18 @@ when tagging. A release build fails if its version has no dated section here.
 
 ## [Unreleased]
 
+## [0.2.15] - 2026-11-26
+
 ### Fixed
 - Device reports and session stats: a scanner that drops and comes back within a second is now counted as a
   disconnect, and pressing Stop is no longer counted as one. The data average and total sent no longer fall to
   zero after the scanner reconnects.
+- Mirror: the 3D view shows again with Creality Scan 4.3.4. It stayed blank when the mirror connected while
+  its screen wasn't open.
+
+### Changed
+- The bridge now reports Scan Bridge firmware 1.3.5, the latest from Creality, so Creality Scan stops asking
+  you to update the Scan Bridge firmware.
 
 ## [0.2.14] - 2026-11-14
 

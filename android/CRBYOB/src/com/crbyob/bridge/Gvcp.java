@@ -19,7 +19,7 @@ public final class Gvcp {
     public static final class Cfg {
         public byte[] mac = new byte[6];
         public String mask = "255.255.255.0", gateway = "0.0.0.0";
-        public String manufacturer = "Orbbec", model = "Scan Bridge", version = "1.3.1", mfgInfo = "",
+        public String manufacturer = "Orbbec", model = "Scan Bridge", version = "1.3.5", mfgInfo = "",
                 sn = "CRBYOB001", userName = "";
         public int pid = 0x0C01;
         public double keepalive = 1.0;
