@@ -103,6 +103,9 @@ public final class Bridge {
     final MirrorWatch mirrorWatch = new MirrorWatch(true);
     final Dash dash = new Dash(this);
     volatile long permissionPending;
+    // Counted where they happen: Dash samples once a second and would miss a scanner that drops and is back in between.
+    final java.util.concurrent.atomic.AtomicInteger scannerOpens = new java.util.concurrent.atomic.AtomicInteger(),
+            scannerDetaches = new java.util.concurrent.atomic.AtomicInteger();
 
     // ExtensionInfo / GVCP config
     final String bridgeSn;      // "CRBYOB" + 4 hex of the per-install MAC (was a fixed "CRBYOB001")
@@ -334,6 +337,7 @@ public final class Bridge {
                 String fw = o.probeVersion();
                 if (fw != null) prefs.edit().putString("sub_fw", fw).putString("sub_sn", o.usbSerial.isEmpty() ? o.versionSn : o.usbSerial).apply();
                 BLog.log("scanner_ready", "pid", d.getProductId(), "fw", fw, "serial", o.usbSerial);
+                scannerOpens.incrementAndGet();
                 logEffectiveProfiles("open");
                 if (imu != null) imu.ensureReader();
             } catch (Exception e) {
@@ -346,7 +350,10 @@ public final class Bridge {
     public void onDetached(UsbDevice d) {
         synchronized (usbLock) {
             Otter o = otter;
-            if (o != null && (d == null || o.dev.getDeviceName().equals(d.getDeviceName()))) closeOtter("detached");
+            if (o != null && (d == null || o.dev.getDeviceName().equals(d.getDeviceName()))) {
+                closeOtter("detached");
+                scannerDetaches.incrementAndGet();
+            }
         }
     }
 
