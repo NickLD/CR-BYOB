@@ -357,8 +357,8 @@ final class MirrorSession {
 
     /**
      * The 3D view's texture size asked of Creality Scan in init: the screen's long side (at most 1280) at 4:3, times
-     * the resolution in percent. It's the one size Creality Scan honors, and only at init: it ignores
-     * StreamQualityMessage.ScaleFactor (at 0.5 and 0.25 every track kept its size), so a change reconnects.
+     * the resolution in percent. It's the one size we set, and only at init (we keep StreamQualityMessage.ScaleFactor
+     * at 1.0, see applyQuality), so a change reconnects.
      */
     int[] modelSize(int res) {
         android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
@@ -444,9 +444,10 @@ final class MirrorSession {
         boolean wantLow = !visible;
         if (wantLow == lowQuality && !force) return;
         lowQuality = wantLow;
-        // StreamQualityMessage {TextureType, ScaleFactor, FrameRate, QualityFactor};
-        // the PC prefab's VideoStreamSender defaults are scale 1.0, 30 fps.
-        double scale = wantLow ? 0.25 : 1.0, q = wantLow ? 0.5 : 1.0;
+        // StreamQualityMessage {TextureType, ScaleFactor, FrameRate, QualityFactor}; the PC prefab's defaults are
+        // scale 1.0, 30 fps. ScaleFactor stays 1.0: it is a "scale down by" factor that must be >= 1, and from
+        // Creality Scan 4.3.4 a value below 1 throws on every frame of that track, so its trackInfo never comes.
+        double scale = 1.0, q = wantLow ? 0.5 : 1.0;
         int fps = wantLow ? 2 : visibleFps();
         for (int t : new int[]{1, 2, 4}) {
             js(String.format(Locale.US, "rpcNotify('stream.quality',{TextureType:%d,ScaleFactor:%.2f,FrameRate:%d,QualityFactor:%.2f})",

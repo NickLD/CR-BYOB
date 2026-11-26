@@ -12,7 +12,7 @@
   "phone_to_pc": {
    "init": "request {DicDatas:{CustomModelTextureSize:[w,h]}, Version, Platform:2, ScannerPid, Uid}",
    "heartbeat": "notification, no params",
-   "stream.quality": "{TextureType, ScaleFactor (ignored), FrameRate, QualityFactor}",
+   "stream.quality": "{TextureType, ScaleFactor (scale-down factor, must be >= 1), FrameRate, QualityFactor}",
    "scanCreate": "no params; new scan with the settings applied (ScanState.CreateScan); ignored while a modal panel is open on the PC",
    "scanStart": "no params; start, or resume when paused",
    "pauseScan": "no params",

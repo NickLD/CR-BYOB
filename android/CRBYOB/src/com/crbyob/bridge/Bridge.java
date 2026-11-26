@@ -109,7 +109,7 @@ public final class Bridge {
 
     // ExtensionInfo / GVCP config
     final String bridgeSn;      // "CRBYOB" + 4 hex of the per-install MAC (was a fixed "CRBYOB001")
-    final String bridgeVersion = "1.3.1";
+    final String bridgeVersion = "1.3.5";
     final int bridgePid = 0x0C01;
     final String wifiSsid = "Creality_Scan_Pocket_D1Y001";
 
